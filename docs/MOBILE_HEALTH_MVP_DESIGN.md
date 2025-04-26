@@ -11,6 +11,20 @@ API HL7v2 store.
 Function (NodeJS/TS) → Healthcare HL7v2 Store)  
 ```  
 
+## 2.a Framework Selection – Flutter vs React Native
+
+| Criterion                | Flutter                                  | React Native                             | Verdict |
+|--------------------------|------------------------------------------|------------------------------------------|---------|
+| BLE Ecosystem            | `flutter_blue_plus`, `flutter_reactive_ble` mature; consistent APIs on iOS/Android | Community plug-ins vary in quality; some iOS lags | Flutter |
+| Performance (GATT data)  | Compiled ARM code; low-latency stream handling | JS bridge adds ~3-5 ms per call          | Flutter |
+| HL7v2 Parsing/Mapping    | Pure-Dart libraries available; can reuse TS in cloud | Same—neutral                              | Tie |
+| Team Skillset            | *<fill in>*                               | *<fill in>*                               | — |
+| Long-Term Maintenance    | Single language (Dart) front-end; stable | Depends on React & RN release cadence     | Flutter |
+
+**Decision:** Proceed with **Flutter** to maximise BLE stability and minimise latency for real-time physiological data capture.
+
+> Note: Should project constraints change (e.g., strong React expertise), this section must be revisited before Task 02 kicks off.
+
 ## 3. Data Flow
 1. BLE peripheral advertises **GATT** services.  
 2. Flutter plugin `flutter_blue_plus` streams raw measurements into `StreamController<PhysioSample>`.  
