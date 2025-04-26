@@ -17,6 +17,42 @@ Function (NodeJS/TS) → Healthcare HL7v2 Store)
 3. Samples are batched every *N* seconds, JSON-encoded and pushed to **Pub/Sub** via `googleapis` REST.  
 4. Cloud Function triggers on Pub/Sub, maps JSON → HL7v2 via open-source `hl7v2-js` mapper, validates, and POSTs to `projects.locations.datasets.hl7V2Stores.messages`.  
 
+## 3.a Device & Participant Management
+
+### Goals
+• Let users add any BLE sensor at run-time.  
+• Guarantee each measurement is tagged with the correct `participantId` and `deviceId`.  
+
+### Mobile Workflow
+1. **Onboarding Wizard**  
+   - Scan → select device → assign or create participant.  
+   - Persist mapping to **Firestore**  
+     `/participants/{pid}/devices/{did}` → `{bleProfile, nickname, pairedAt}`.  
+2. `flutter_blue_plus` feeds data into `SensorAdapter`, which enriches every
+   `PhysioSample`:
+   ```dart
+   PhysioSample(
+     participantId: pid,
+     deviceId: did,
+     metric: ...,
+     timestamp: DateTime.now(),
+   )
+   ```  
+
+### Cloud-Side Mapping
+- Cloud Function reads IDs and populates HL7v2 fields  
+  - `PID-3`  ← `participantId`  
+  - `OBX-18` ← `deviceId`  
+
+### Data Model Snapshot
+| Collection / Document | Fields                          |
+|-----------------------|---------------------------------|
+| participants/{pid}    | name, dob, …                    |
+| └─ devices/{did}      | bleProfile, nickname, pairedAt  |
+
+### Future Frequency Control
+`/participants/{pid}/config` → `{samplingIntervalSecs}` consumed by Cloud Function for batching cadence.
+
 ## 4. Minimal Tech Stack
 | Layer              | Tech                                |
 |--------------------|-------------------------------------|
