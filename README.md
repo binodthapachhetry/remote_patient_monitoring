@@ -21,3 +21,31 @@ flutter doctor --android-licenses
 ```
 
 Re-run `flutter doctor`; all checks should now pass.
+
+## Running the App
+
+1. List available devices/emulators  
+```bash
+flutter devices          # shows IDs such as macos, chrome, 48241FDAQ00584
+```
+
+2. (Optional) Start an Android emulator  
+```bash
+flutter emulators                     # list emulators
+flutter emulators --launch pixel_9    # use the exact emulator ID
+```
+
+3. Run on a specific target **instead of** `any`  
+```bash
+# Desktop
+flutter run -d macos
+
+# Physical Android phone
+flutter run -d 48241FDAQ00584
+
+# Chrome web
+flutter run -d chrome
+```
+
+`any` works only when at least one **supported** device is already booted/connected;  
+explicit IDs eliminate the ambiguity and avoid the “No supported devices” error.
