@@ -49,3 +49,23 @@ flutter run -d chrome
 
 `any` works only when at least one **supported** device is already booted/connected;  
 explicit IDs eliminate the ambiguity and avoid the “No supported devices” error.
+
+## 🛠️ First-Time Project Bootstrap
+
+After cloning, the repo contains only Dart sources and `pubspec.yaml`.  
+Generate the native platform folders once with:
+
+```bash
+cd mobile_app
+# Include every platform you need; omit the rest.
+flutter create . --platforms=android,ios,macos,web
+```
+
+The command is idempotent and will not overwrite existing Dart code.  
+Then run the app:
+
+```bash
+flutter run -d <device_id>   # e.g. flutter run -d 48241FDAQ00584
+```
+
+This removes the “AndroidManifest.xml could not be found” error.
