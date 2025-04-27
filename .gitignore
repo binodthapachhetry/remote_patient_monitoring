@@ -5,3 +5,12 @@
 /mobile_app/.idea/
 /mobile_app/.packages
 /mobile_app/pubspec.lock
++
++# ── Global Flutter/Dart build artifacts ─────────────────────────────
++**/build/
++.dart_tool/
++.flutter-plugins
++.flutter-plugins-dependencies
++pubspec.lock
++ios/
++android/
