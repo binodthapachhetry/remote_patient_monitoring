@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'ble_permission_gate.dart';
 
 void main() {
   runApp(const MobileHealthApp());
@@ -16,8 +17,10 @@ class MobileHealthApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: const Scaffold(
-        body: Center(child: Text('Mobile Health MVP')),
+      home: BlePermissionGate(
+        child: const Scaffold(
+          body: Center(child: Text('Mobile Health MVP')),
+        ),
       ),
     );
   }
