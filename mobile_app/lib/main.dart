@@ -18,7 +18,7 @@ class MobileHealthApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const BlePermissionGate(
-        child: const Scaffold(
+        child: Scaffold(
           body: Center(child: Text('Mobile Health MVP')),
         ),
       ),
