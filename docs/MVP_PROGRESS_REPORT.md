@@ -19,10 +19,9 @@
 2. **Grant permissions** when prompted by `BlePermissionGate`.  
 3. **Start scanning** in a DevTools console:  
    ```dart
-   import 'package:mobile_health_app/services/device_discovery_service.dart';
-   final scanner = DeviceDiscoveryService();
-   await scanner.start();
-   scanner.results.listen(print);        // look for your scale’s MAC/name
+   final scanner = DeviceDiscoveryService();     // library already loaded
+   await scanner.start();                        // OK: DevTools supports await
+   scanner.results.listen(print);                // look for your scale’s MAC/name
    ```  
 4. **Bind WeightAdapter** (replace `device` with the discovered instance):  
    ```dart
