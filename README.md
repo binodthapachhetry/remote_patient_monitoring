@@ -68,6 +68,19 @@ Then run the app:
 flutter run -d <device_id>   # e.g. flutter run -d 48241FDAQ00584
 ```
 
+### 🔄  Sync Dart/Flutter Dependencies
+
+Whenever `mobile_app/pubspec.yaml` changes (e.g., we added
+`permission_handler`), fetch the packages before building:
+
+```bash
+cd mobile_app
+flutter pub get        # downloads permission_handler and all transitive deps
+```
+
+If the IDE still shows “package … not found,” restart the IDE or run
+`flutter clean && flutter pub get`.
+
 This removes the “AndroidManifest.xml could not be found” error.
 
 ## 🔍 How to Evaluate Each Commit
