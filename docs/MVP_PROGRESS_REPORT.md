@@ -13,6 +13,7 @@
 ### 2. Manual Test – Android phone + BLE Weight-Scale
 1. **Boot app**  
    ```bash
+   # IMPORTANT ── always run the Flutter project inside `mobile_app/`
    cd mobile_app
    flutter run -d <android_device_id>
    ```  
