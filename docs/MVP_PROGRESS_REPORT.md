@@ -19,19 +19,17 @@
 2. **Grant permissions** when prompted by `BlePermissionGate`.  
 3. **Start scanning** in a DevTools console:  
    ```dart
-   final scanner = DeviceDiscoveryService();     // library already loaded
-   await scanner.start();                        // OK: DevTools supports await
-   scanner.results.listen(print);                // look for your scale’s MAC/name
+   import 'package:mobile_health_app/debug_console_utils.dart';
+   debugInitScanner();                       // starts scan (singleton)
+   debugGetScanner().results.listen(print);  // look for your scale’s MAC/name
    ```  
 4. **Bind WeightAdapter** (replace `device` with the discovered instance):  
    ```dart
-   import 'package:mobile_health_app/sensors/weight_adapter.dart';
-   final adapter = WeightAdapter(
+   import 'package:mobile_health_app/debug_console_utils.dart';
+   await debugBindWeightAdapter(         // returns WeightAdapter
      participantId: 'demoUser',
-     deviceId: device.remoteId.str,      // MAC / UUID
-   );
-   await adapter.bind(device);
-   adapter.samples.listen(print);        // expect PhysioSample(weightKg)
+     device: device,                     // replace with discovered BluetoothDevice
+   ).then((a) => a.samples.listen(print));
    ```  
 5. **Persist mapping** (one-time):  
    ```dart
@@ -45,8 +43,7 @@
    ```  
 6. **Cleanup**  
    ```dart
-   await adapter.dispose();
-   await scanner.stop();
+   await debugStopScanner();             // stops scan & cleans up
    ```
 
 ### 3. Next Obvious Microtask
