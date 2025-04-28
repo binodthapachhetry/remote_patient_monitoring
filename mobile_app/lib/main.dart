@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'ble_permission_gate.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-void main() async {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const MobileHealthApp());
 }
 
