@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'ble_permission_gate.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:mobile_health_app/services/device_discovery_service.dart';
-import 'package:mobile_health_app/debug_console_utils.dart';
+import 'screens/scanner_page.dart';               // enables in-app BLE scan UI
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,9 +22,7 @@ class MobileHealthApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const BlePermissionGate(
-        child: Scaffold(
-          body: Center(child: Text('Mobile Health MVP')),
-        ),
+        child: ScannerPage(participantId: 'demoUser'),
       ),
     );
   }
