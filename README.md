@@ -40,7 +40,8 @@ flutter emulators --launch pixel_9    # use the exact emulator ID
 # Desktop
 flutter run -d macos
 
-# Physical Android phone
+# launch the real app
+cd mobile_app
 flutter run -d 48241FDAQ00584
 
 # Chrome web
