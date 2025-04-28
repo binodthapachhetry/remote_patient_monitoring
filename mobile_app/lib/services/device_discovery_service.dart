@@ -27,8 +27,6 @@ class DeviceDiscoveryService {
       onError: _controller.addError,
     );
     await FlutterBluePlus.startScan(
-      // Duplicates can be useful for RSSI updates; reduce spam if needed.
-      withDevices: const [],
       // Change scan mode here if power optimisation required.
       timeout: const Duration(seconds: 0), // 0 == no timeout
     );
