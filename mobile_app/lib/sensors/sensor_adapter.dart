@@ -11,7 +11,9 @@ import '../models/physio_sample.dart';
 /// 2.   `samples`– broadcast parsed [PhysioSample]s.
 /// 3.   `dispose`– clean up subscriptions and connections.
 abstract class SensorAdapter {
-  SensorAdapter(this.participantId);
+  /// [participantId] is required and passed as a **named** parameter by all
+  /// concrete adapters (e.g., `WeightAdapter`).
+  SensorAdapter({required this.participantId});
 
   /// The participant associated with the samples produced by this adapter.
   final String participantId;
