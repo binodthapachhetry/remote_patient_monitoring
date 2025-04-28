@@ -17,7 +17,7 @@ class MobileHealthApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: BlePermissionGate(
+      home: const BlePermissionGate(
         child: const Scaffold(
           body: Center(child: Text('Mobile Health MVP')),
         ),

@@ -22,10 +22,11 @@ class DeviceDiscoveryService {
     if (_scanning) return;
     _scanning = true;
     // Forward flutter_blue_plus scan results into our controller.
-    _subscription = FlutterBluePlus.instance
-        .scanResults
-        .listen(_controller.add, onError: _controller.addError);
-    await FlutterBluePlus.instance.startScan(
+    _subscription = FlutterBluePlus.scanResults.listen(
+      (batch) => batch.forEach(_controller.add), // flatten List<ScanResult>
+      onError: _controller.addError,
+    );
+    await FlutterBluePlus.startScan(
       // Duplicates can be useful for RSSI updates; reduce spam if needed.
       withDevices: const [],
       // Change scan mode here if power optimisation required.
@@ -36,7 +37,7 @@ class DeviceDiscoveryService {
   /// Stops scanning and closes internal subscription.
   Future<void> stop() async {
     if (!_scanning) return;
-    await FlutterBluePlus.instance.stopScan();
+    await FlutterBluePlus.stopScan();
     await _subscription?.cancel();
     _subscription = null;
     _scanning = false;
