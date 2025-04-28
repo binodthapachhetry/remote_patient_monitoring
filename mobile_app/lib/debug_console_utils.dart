@@ -36,3 +36,33 @@ Future<WeightAdapter> debugBindWeightAdapter({
   await adapter.bind(device);
   return adapter;
 }
+
+/// ---------------------------------------------------------------------------
+/// Global scanner helpers that avoid `await`/assignment in DevTools console.
+/// ---------------------------------------------------------------------------
+
+@pragma('vm:entry-point')
+DeviceDiscoveryService debugInitScanner() {
+  _scanner ??= DeviceDiscoveryService();
+  // Fire-and-forget; any connection errors surface via the results stream.
+  _scanner!.start();
+  return _scanner!;
+}
+
+@pragma('vm:entry-point')
+DeviceDiscoveryService debugGetScanner() {
+  if (_scanner == null) {
+    throw StateError('Call debugInitScanner() first');
+  }
+  return _scanner!;
+}
+
+@pragma('vm:entry-point')
+Future<void> debugStopScanner() async {
+  if (_scanner != null) {
+    await _scanner!.stop();
+    _scanner = null;
+  }
+}
+
+DeviceDiscoveryService? _scanner;
