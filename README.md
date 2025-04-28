@@ -69,3 +69,17 @@ flutter run -d <device_id>   # e.g. flutter run -d 48241FDAQ00584
 ```
 
 This removes the “AndroidManifest.xml could not be found” error.
+
+## 🔍 How to Evaluate Each Commit
+
+Every pull-request or commit created with the three-phase convention includes
+a **PHASE 3 – REVIEW INTERFACE** block.  
+Follow the checklist therein:
+
+1. Unit / widget / integration test commands  
+2. Static-analysis commands (`flutter analyze`, `dart test`, etc.)  
+3. Manual verification steps (e.g., `flutter run -d macos`)  
+
+For convenience, copy any shell snippets exactly as shown; they are
+guaranteed to work on macOS / Linux with the tool-versions pinned in
+`README.md`.
