@@ -1,0 +1,8 @@
+
+	<!-- ─── BLE / Location runtime permissions (iOS 13+) ─── -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app uses Bluetooth to connect to health sensors.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>This app communicates with BLE devices.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location access is required to discover nearby Bluetooth devices.</string>
