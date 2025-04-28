@@ -18,14 +18,14 @@
    ```  
 2. **Grant permissions** when prompted by `BlePermissionGate`.  
 3. **Start scanning** in a DevTools console:  
+   > **Note:** The DevTools console only accepts Dart _expressions_ (not `import` or `final` statements).  
+   All project files are pre-imported; just call functions directly:  
    ```dart
-   import 'package:mobile_health_app/debug_console_utils.dart';
-   debugInitScanner();                       // starts scan (singleton)
-   debugGetScanner().results.listen(print);  // look for your scale’s MAC/name
+   await debugInitScanner();                       // starts scan (singleton)
+   debugGetScanner().results.listen(print);        // look for your scale’s MAC/name
    ```  
 4. **Bind WeightAdapter** (replace `device` with the discovered instance):  
    ```dart
-   import 'package:mobile_health_app/debug_console_utils.dart';
    await debugBindWeightAdapter(         // returns WeightAdapter
      participantId: 'demoUser',
      device: device,                     // replace with discovered BluetoothDevice
@@ -45,6 +45,12 @@
    ```dart
    await debugStopScanner();             // stops scan & cleans up
    ```
+   
+> **Tip:**  
+> If you need to keep a reference in the console, wrap the assignment in a map literal (an expression):  
+> ```dart
+> { 'scanner': debugInitScanner() }
+> ```
 
 ### 3. Next Obvious Microtask
 Proceed to **M1.5 – Implement Heart-Rate Adapter (GATT 0x180D)** to enable a second sensor type and validate `SensorAdapter` extensibility.
