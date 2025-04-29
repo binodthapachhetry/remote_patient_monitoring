@@ -35,37 +35,57 @@ class _ScannerPageState extends State<ScannerPage> {
 
   // On tap, bind to the selected device and listen for weight samples
   Future<void> _onTap(ScanResult r) async {
-    // Stop scanning before connecting
-    await _scanner.stop(); // Consider moving stop() inside try if connection fails often
+    await _scanner.stop();
 
-    try {
-      _adapter = WeightAdapter(
-        participantId: widget.participantId,
-        deviceId: r.device.remoteId.str,
-      );
-      await _adapter!.bind(r.device); // Attempt to connect and bind
+    const maxRetries = 2; // Try initial connection + 2 retries
+    int attempt = 0;
+    bool connected = false;
 
-      // Listen for samples only after successful binding
-      _adapter!.samples.listen((s) => debugPrint('Weight: ${s.value} kg'));
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          // Show device ID if name is empty for better identification
-          SnackBar(content: Text('Connected to ${r.device.platformName.isNotEmpty ? r.device.platformName : r.device.remoteId.str}')),
+    while (attempt <= maxRetries && !connected) {
+      attempt++;
+      debugPrint('>>> Connection attempt $attempt for ${r.device.remoteId.str}');
+      try {
+        _adapter = WeightAdapter(
+          participantId: widget.participantId,
+          deviceId: r.device.remoteId.str,
         );
+        await _adapter!.bind(r.device); // Attempt to connect and bind
+        connected = true; // Mark as successful if bind completes
+
+        // Listen for samples only after successful binding
+        _adapter!.samples.listen((s) => debugPrint('Weight: ${s.value} kg'));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Connected to ${r.device.platformName.isNotEmpty ? r.device.platformName : r.device.remoteId.str}')),
+          );
+        }
+      } catch (e) {
+        debugPrint('!!! Attempt $attempt failed: Error connecting/binding to device: $e');
+        // Clean up adapter if bind failed partway through
+        // Use a temporary variable to avoid race conditions if dispose is async
+        final adapterToDispose = _adapter;
+        _adapter = null; // Nullify immediately
+        await adapterToDispose?.dispose();
+
+
+        if (attempt > maxRetries) {
+          // Final attempt failed, show error to user
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Connection failed after $attempt attempts: ${e.toString()}')),
+            );
+          }
+        } else {
+          // Wait a bit before retrying
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
       }
-    } catch (e) {
-      // Log the error for debugging
-      debugPrint('!!! Error connecting/binding to device: $e');
-      if (mounted) {
-        // Show user-friendly error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error connecting: ${e.toString()}')),
-        );
-      }
-      // Optionally, restart scanning if connection fails to allow retry
-      // await _startScan();
     }
+    // Optionally, restart scanning if all connection attempts fail
+    // if (!connected) {
+    //   await _startScan();
+    // }
   }
 
   @override
