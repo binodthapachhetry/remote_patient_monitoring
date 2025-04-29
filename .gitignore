@@ -5,6 +5,8 @@
 /mobile_app/.idea/
 /mobile_app/.packages
 /mobile_app/pubspec.lock
+mobile_app/android/app/google-services.json
+
 +
 +# ── Global Flutter/Dart build artifacts ─────────────────────────────
 +**/build/
