@@ -35,17 +35,36 @@ class _ScannerPageState extends State<ScannerPage> {
 
   // On tap, bind to the selected device and listen for weight samples
   Future<void> _onTap(ScanResult r) async {
-    await _scanner.stop();
-    _adapter = WeightAdapter(
-      participantId: widget.participantId,
-      deviceId: r.device.remoteId.str,
-    );
-    await _adapter!.bind(r.device);
-    _adapter!.samples.listen((s) => debugPrint('Weight: ${s.value} kg'));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connected to ${r.device.platformName}')),
+    // Stop scanning before connecting
+    await _scanner.stop(); // Consider moving stop() inside try if connection fails often
+
+    try {
+      _adapter = WeightAdapter(
+        participantId: widget.participantId,
+        deviceId: r.device.remoteId.str,
       );
+      await _adapter!.bind(r.device); // Attempt to connect and bind
+
+      // Listen for samples only after successful binding
+      _adapter!.samples.listen((s) => debugPrint('Weight: ${s.value} kg'));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          // Show device ID if name is empty for better identification
+          SnackBar(content: Text('Connected to ${r.device.platformName.isNotEmpty ? r.device.platformName : r.device.remoteId.str}')),
+        );
+      }
+    } catch (e) {
+      // Log the error for debugging
+      debugPrint('!!! Error connecting/binding to device: $e');
+      if (mounted) {
+        // Show user-friendly error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error connecting: ${e.toString()}')),
+        );
+      }
+      // Optionally, restart scanning if connection fails to allow retry
+      // await _startScan();
     }
   }
 
