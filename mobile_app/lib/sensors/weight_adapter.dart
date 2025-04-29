@@ -65,16 +65,19 @@ class WeightAdapter extends SensorAdapter {
     debugPrint('>>> Raw Payload Received: [$hexPayload] (${payload.length} bytes)');
     // --- End Logging ---
     final data = Uint8List.fromList(payload);
-    if (data.length < 3) return; // flags + 2-byte weight
+    // Ensure payload is long enough for our assumed format (at least 4 bytes for bytes 2 & 3)
+    if (data.length < 4) {
+      debugPrint('>>> Payload too short: ${data.length} bytes');
+      return;
+    }
 
-    // Flags → bit-0 == unit (0 = kg, 1 = lb)
-    final unitIsLb = (data[0] & 0x01) == 0x01;
-    final rawWeight = (data[2] << 8) | data[1]; // uint16
-
-    // Resolution: kg 0.005, lb 0.01
-    final weightKg = unitIsLb
-        ? rawWeight * 0.01 * 0.45359237
-        : rawWeight * 0.005;
+    // --- New Parsing Logic Hypothesis ---
+    // Assume bytes 2 & 3 (little-endian) represent weight in kg * 100
+    // Example: [ac 02 fe 1c ff 00 cc e5] -> 0x1cfe = 7422 -> 74.22 kg
+    final rawValue = (data[3] << 8) | data[2]; // Bytes 3 and 2 for uint16_le
+    final weightKg = rawValue / 100.0;
+    debugPrint('>>> Parsed Weight: $weightKg kg (Raw Value: $rawValue)'); // Add detailed log
+    // --- End New Parsing Logic ---
 
     _controller.add(
       PhysioSample(
