@@ -27,6 +27,8 @@ class _ScannerPageState extends State<ScannerPage> {
   Future<void> _startScan() async {
     await _scanner.start();
     _sub = _scanner.results.listen((r) {
+      // --- Add this line for debugging ---
+      debugPrint('Scan Result Received: ID=${r.device.remoteId}, Name=${r.advertisementData.advName}, PlatformName=${r.device.platformName}, RSSI=${r.rssi}');
       if (mounted && !_results.any((e) => e.device.remoteId == r.device.remoteId)) {
         setState(() => _results.add(r));
       }
