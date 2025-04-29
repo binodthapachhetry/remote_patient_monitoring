@@ -1,12 +1,8 @@
 // default route shows scanner during manual testing
 import 'package:flutter/material.dart';
-// import 'package:firebase_core/firebase_core.dart'; // Comment out
-// TODO: This import path seems incorrect based on the file tree provided earlier.
-// Assuming ble_permission_gate.dart is directly under lib/
-// import 'ble_permission_gate.dart'; // Comment out
-// If it's under mobile_app/lib/, the import should be:
-// import 'package:mobile_health_app/ble_permission_gate.dart'; // Adjust package name if needed
-// import 'screens/scanner_page.dart'; // Comment out
+import 'package:firebase_core/firebase_core.dart'; // Comment out
+import 'package:remote_patient_monitoring/ble_permission_gate.dart'; // Adjust package name if needed
+import 'screens/scanner_page.dart'; // Comment out
 
 // Make main async to allow awaiting Firebase initialization
 Future<void> main() async {
@@ -32,9 +28,9 @@ class MobileHealthApp extends StatelessWidget {
           child: Text('Minimal App Running!'),
         ),
       ),
-      // home: const BlePermissionGate( // Comment out
-      //   child: ScannerPage(participantId: 'demoUser'),
-      // ),
+      home: const BlePermissionGate( // Comment out
+        child: ScannerPage(participantId: 'demoUser'),
+      ),
     );
   }
 }

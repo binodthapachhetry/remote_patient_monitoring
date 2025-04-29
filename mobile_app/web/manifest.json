@@ -1,6 +1,6 @@
 {
-    "name": "mobile_health_app",
-    "short_name": "mobile_health_app",
+    "name": "remote_patient_monitoring",
+    "short_name": "remote_patient_monitoring",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

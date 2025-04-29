@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:mobile_health_app/services/device_discovery_service.dart';
-import 'package:mobile_health_app/sensors/weight_adapter.dart';
+import 'package:remote_patient_monitoring/services/device_discovery_service.dart';
+import 'package:remote_patient_monitoring/sensors/weight_adapter.dart';
 
 /// Helper methods that can be invoked directly from the DevTools / IDE
 /// debug console.  They are guarded by `kDebugMode`, so they are tree-shaken

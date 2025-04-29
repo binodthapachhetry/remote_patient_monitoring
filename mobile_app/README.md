@@ -1,4 +1,4 @@
-# mobile_health_app
+# remote_patient_monitoring
 
 A new Flutter project.
 

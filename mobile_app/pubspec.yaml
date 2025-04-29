@@ -1,4 +1,4 @@
-name: mobile_health_app
+name: remote_patient_monitoring
 description: Flutter client for Mobile Health MVP – BLE data acquisition
 version: 0.1.0
 

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1009074952654",
+    "project_id": "remote-patient-monitorin-eda7a",
+    "storage_bucket": "remote-patient-monitorin-eda7a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1009074952654:android:f22216bb2ae5634536b39f",
+        "android_client_info": {
+          "package_name": "com.example.remote_patient_monitoring"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSwk9n330lC1jo-02PVFdTe5YVQ7Mv3GU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

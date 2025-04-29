@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 
     <application
-        android:label="mobile_health_app"
+        android:label="remote_patient_monitoring"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
