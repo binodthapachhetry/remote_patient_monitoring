@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart'; // Import for debugPrint
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 /// Singleton that discovers nearby BLE peripherals and exposes their
@@ -19,22 +20,30 @@ class DeviceDiscoveryService {
 
   /// Begins continuous BLE scanning until [stop] is called.
   Future<void> start() async {
+    debugPrint('>>> DeviceDiscoveryService: start() called. _scanning=$_scanning'); // Add log
     if (_scanning) return;
     _scanning = true;
     // Forward flutter_blue_plus scan results into our controller.
     _subscription = FlutterBluePlus.scanResults.listen(
       (batch) => batch.forEach(_controller.add), // flatten List<ScanResult>
-      onError: _controller.addError,
+      onError: (e) { // Add error logging
+        debugPrint('!!! DeviceDiscoveryService: ScanResults stream error: $e');
+        _controller.addError(e);
+      },
     );
+    debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.startScan()'); // Add log
     await FlutterBluePlus.startScan(
       // Change scan mode here if power optimisation required.
-      timeout: const Duration(seconds: 0), // 0 == no timeout
+      // Use a long timeout instead of zero to rule out immediate stop issues.
+      timeout: const Duration(minutes: 1), // e.g., 1 minute timeout
     );
   }
 
   /// Stops scanning and closes internal subscription.
   Future<void> stop() async {
+    debugPrint('>>> DeviceDiscoveryService: stop() called. _scanning=$_scanning'); // Add log
     if (!_scanning) return;
+    debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.stopScan()'); // Add log
     await FlutterBluePlus.stopScan();
     await _subscription?.cancel();
     _subscription = null;
