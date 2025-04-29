@@ -23,14 +23,14 @@ class MobileHealthApp extends StatelessWidget {
       // Use Material 3 theme for modern look
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal), useMaterial3: true),
       // Replace home with a very simple widget
-      home: const Scaffold(
-        body: Center(
-          child: Text('Minimal App Running!'),
-        ),
-      ),
-      home: const BlePermissionGate( // Comment out
-        child: ScannerPage(participantId: 'demoUser'),
-      ),
+      // home: const Scaffold(  // Remove this duplicate home
+      //   body: Center(
+      //     child: Text('Minimal App Running!'),
+      //   ),
+      // ),
+      home: const BlePermissionGate( // Uncomment this line
+        child: ScannerPage(participantId: 'demoUser'), // Uncomment this line
+      ), // Uncomment this line
     );
   }
 }

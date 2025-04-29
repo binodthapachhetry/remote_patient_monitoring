@@ -51,6 +51,7 @@ class _ScannerPageState extends State<ScannerPage> {
 
   @override
   void dispose() {
+    debugPrint('ScannerPage dispose called'); // Add logging here
     _sub?.cancel();
     _scanner.stop();
     _adapter?.dispose();
