@@ -24,9 +24,9 @@ class WeightAdapter extends SensorAdapter {
 
   // ─── BLE UUIDs ────────────────────────────────────────────────────
   static final Guid _serviceUuid =
-      Guid('0000181d-0000-1000-8000-00805f9b34fb'); // Weight Scale
+      Guid('d618d000-6000-1000-8000-000000000000'); // Weight Scale
   static final Guid _charUuid =
-      Guid('00002a9d-0000-1000-8000-00805f9b34fb'); // Weight Measurement
+      Guid('4143f6b0-5300-4900-4700-414943415245'); // Weight Measurement
 
   late BluetoothDevice _device;
   StreamSubscription<List<int>>? _sub;
