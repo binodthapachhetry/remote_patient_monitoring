@@ -24,9 +24,9 @@ class WeightAdapter extends SensorAdapter {
 
   // ─── BLE UUIDs ────────────────────────────────────────────────────
   static final Guid _serviceUuid =
-      Guid('d618d000-6000-1000-8000-000000000000'); // Weight Scale
+      Guid('4143f6b0-5300-4900-4700-414943415245'); // Try the OTHER proprietary service UUID
   static final Guid _charUuid =
-      Guid('4143f6b0-5300-4900-4700-414943415245'); // Weight Measurement
+      Guid('4143f6b0-5300-4900-4700-414943415245'); // Keep this characteristic UUID
 
   late BluetoothDevice _device;
   StreamSubscription<List<int>>? _sub;
@@ -47,8 +47,13 @@ class WeightAdapter extends SensorAdapter {
     // Discover Weight-Scale service & characteristic
     final service = services.firstWhere((s) => s.serviceUuid == _serviceUuid, orElse: () => throw Exception('Weight service not found'));
 
-    final char = service.characteristics.firstWhere((c) => c.characteristicUuid == _charUuid,
-        orElse: () => throw Exception('Weight characteristic not found'));
+    // --- Add Logging ---
+    debugPrint('>>> WeightAdapter: Looking for characteristic $_charUuid in service $_serviceUuid');
+    for (var char in service.characteristics) {
+      debugPrint('>>> Found characteristic: ${char.characteristicUuid} in service ${service.serviceUuid}');
+    }
+    // --- End Logging ---
+    final char = service.characteristics.firstWhere((c) => c.characteristicUuid == _charUuid, orElse: () => throw Exception('Weight characteristic not found'));
 
     await char.setNotifyValue(true);
     _sub = char.onValueReceived.listen(_onData, onError: _controller.addError);
