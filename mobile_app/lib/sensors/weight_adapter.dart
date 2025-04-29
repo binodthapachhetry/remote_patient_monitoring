@@ -60,6 +60,10 @@ class WeightAdapter extends SensorAdapter {
   }
 
   void _onData(List<int> payload) {
+    // --- Add Logging ---
+    final hexPayload = payload.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+    debugPrint('>>> Raw Payload Received: [$hexPayload] (${payload.length} bytes)');
+    // --- End Logging ---
     final data = Uint8List.fromList(payload);
     if (data.length < 3) return; // flags + 2-byte weight
 
