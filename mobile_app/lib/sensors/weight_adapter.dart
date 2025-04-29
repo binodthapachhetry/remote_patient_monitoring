@@ -26,7 +26,7 @@ class WeightAdapter extends SensorAdapter {
   static final Guid _serviceUuid =
       Guid('4143f6b0-5300-4900-4700-414943415245'); // Try the OTHER proprietary service UUID
   static final Guid _charUuid =
-      Guid('4143f6b1-5300-4900-4700-414943415245'); // Try characteristic ...f6b1 instead of ...f6b2
+      Guid('4143f6b2-5300-4900-4700-414943415245'); // Try characteristic ...f6b1 instead of ...f6b2
 
   late BluetoothDevice _device;
   StreamSubscription<List<int>>? _sub;
