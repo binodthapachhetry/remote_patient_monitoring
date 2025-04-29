@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart'; // Import for debugPrint
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
@@ -35,13 +36,18 @@ class WeightAdapter extends SensorAdapter {
     _device = device;
     await _device.connect(autoConnect: false);
 
-    // Discover Weight-Scale service & characteristic
-    final service = (await _device.discoverServices())
-        .firstWhere((s) => s.serviceUuid == _serviceUuid,
-            orElse: () => throw Exception('Weight service not found'));
+    // --- Add Logging ---
+    debugPrint('>>> WeightAdapter: Discovering services for ${device.remoteId}');
+    final services = await _device.discoverServices();
+    for (var service in services) {
+      debugPrint('>>> Found service: ${service.serviceUuid}');
+    }
+    // --- End Logging ---
 
-    final char = service.characteristics.firstWhere(
-        (c) => c.characteristicUuid == _charUuid,
+    // Discover Weight-Scale service & characteristic
+    final service = services.firstWhere((s) => s.serviceUuid == _serviceUuid, orElse: () => throw Exception('Weight service not found'));
+
+    final char = service.characteristics.firstWhere((c) => c.characteristicUuid == _charUuid,
         orElse: () => throw Exception('Weight characteristic not found'));
 
     await char.setNotifyValue(true);
