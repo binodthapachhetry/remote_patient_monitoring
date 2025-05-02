@@ -13,6 +13,7 @@ dependencies:
   cloud_firestore: ^5.5.0          # Participant↔device mapping
   googleapis: ^13.1.0              # Pub/Sub REST client
   permission_handler: ^11.3.0      # Runtime BLE + location permissions
+  shared_preferences: ^2.2.3       # Local key-value storage (or latest version)
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../services/device_discovery_service.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Import shared_preferences
 import '../sensors/weight_adapter.dart';
 
 class ScannerPage extends StatefulWidget {
@@ -55,6 +57,11 @@ class _ScannerPageState extends State<ScannerPage> {
         // Listen for samples only after successful binding
         _adapter!.samples.listen((s) => debugPrint('Weight: ${s.value} kg'));
 
+        // --- Save Device ID for Auto-Connect ---
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('autoConnectDeviceId', r.device.remoteId.str);
+        debugPrint('>>> Saved ${r.device.remoteId.str} for auto-connect');
+        // --- End Save ---
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Connected to ${r.device.platformName.isNotEmpty ? r.device.platformName : r.device.remoteId.str}')),
