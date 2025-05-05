@@ -7,6 +7,7 @@ import 'services/device_discovery_service.dart';   // for auto-reconnect
 import 'services/background_service_manager.dart'; // for background service
 import 'services/user_manager.dart';               // for participant ID management
 import 'screens/login_screen.dart';                // login UI
+import 'sensors/weight_adapter.dart';              // for weight scale communication
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
