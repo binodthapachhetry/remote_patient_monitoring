@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../services/device_discovery_service.dart';
 import '../services/background_service_manager.dart';
+import '../services/user_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../sensors/weight_adapter.dart';
 
@@ -28,6 +29,36 @@ class _ScannerPageState extends State<ScannerPage> {
     super.initState();
     _loadPreferences();
     _startScan();
+  }
+  
+  // Show logout confirmation dialog
+  Future<void> _confirmLogout() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log Out'),
+        content: const Text('Are you sure you want to log out? Any active connections will be closed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+    
+    if (result == true) {
+      // Close any active connections
+      await _adapter?.dispose();
+      _adapter = null;
+      
+      // Log out the user
+      await UserManager().logout();
+    }
   }
   
   // Load saved preferences for background service and auto-reconnect
@@ -184,7 +215,31 @@ class _ScannerPageState extends State<ScannerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan for Weight-Scale')),
+      appBar: AppBar(
+        title: const Text('Scan for Weight-Scale'),
+        actions: [
+          // User menu
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.account_circle),
+            onSelected: (value) {
+              if (value == 'logout') {
+                _confirmLogout();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'profile',
+                enabled: false,
+                child: Text('ID: ${widget.participantId}'),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Text('Log Out'),
+              ),
+            ],
+          ),
+        ],
+      ),
       body: Column(
         children: [
           // Settings panel
