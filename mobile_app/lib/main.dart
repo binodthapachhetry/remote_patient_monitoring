@@ -33,7 +33,22 @@ Future<void> _initializeBackgroundServices() async {
     await discovery.initAutoReconnect((device) {
       // Handle successful connection
       debugPrint('>>> Auto-reconnect successful to ${device.remoteId.str}');
-      // Future enhancement: Initialize appropriate adapter (e.g., WeightAdapter)
+      
+      // Create weight adapter and start data collection
+      final adapter = WeightAdapter(
+        participantId: 'demoUser', // Using default ID, should be retrieved from storage
+        deviceId: device.remoteId.str,
+      );
+      
+      adapter.bind(device).then((_) {
+        debugPrint('>>> Weight adapter bound after app startup auto-reconnect');
+        
+        // Listen for weight samples
+        adapter.samples.listen((s) => 
+          debugPrint('Weight measurement received: ${s.value} kg'));
+      }).catchError((e) {
+        debugPrint('!!! Error binding to auto-reconnected device: $e');
+      });
     });
   }
 }
