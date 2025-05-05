@@ -230,7 +230,15 @@ class _ScannerPageState extends State<ScannerPage> {
               PopupMenuItem(
                 value: 'profile',
                 enabled: false,
-                child: Text('ID: ${widget.participantId}'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(UserManager().userEmail ?? 'No email'),
+                    const SizedBox(height: 4),
+                    Text('ID: ${widget.participantId}', 
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
               ),
               const PopupMenuItem(
                 value: 'logout',

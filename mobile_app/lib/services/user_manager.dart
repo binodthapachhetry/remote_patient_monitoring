@@ -24,6 +24,9 @@ class UserManager {
   /// Uses the Firebase UID as the participant ID
   String? get participantId => _auth.currentUser?.uid;
   
+  /// The current user's email address (null if not authenticated)
+  String? get userEmail => _auth.currentUser?.email;
+  
   /// Stream of authentication state changes (as boolean)
   Stream<bool> get authStateChanges => _authStateController.stream;
   
@@ -52,10 +55,30 @@ class UserManager {
       );
       
       final user = userCredential.user;
-      debugPrint('>>> User logged in: ${user?.uid}');
+      debugPrint('>>> User logged in: ${user?.uid}, email: ${user?.email}');
       return user != null;
     } on FirebaseAuthException catch (e) {
-      debugPrint('!!! Firebase login error: ${e.code} - ${e.message}');
+      String errorMsg;
+      switch (e.code) {
+        case 'user-not-found':
+          errorMsg = 'No user found with this email';
+          break;
+        case 'wrong-password':
+          errorMsg = 'Wrong password';
+          break;
+        case 'invalid-email':
+          errorMsg = 'Invalid email format';
+          break;
+        case 'user-disabled':
+          errorMsg = 'This account has been disabled';
+          break;
+        case 'too-many-requests':
+          errorMsg = 'Too many attempts. Try again later';
+          break;
+        default:
+          errorMsg = 'Authentication failed';
+      }
+      debugPrint('!!! Firebase login error: ${e.code} - $errorMsg');
       return false;
     } catch (e) {
       debugPrint('!!! Login error: $e');
@@ -74,10 +97,27 @@ class UserManager {
       );
       
       final user = userCredential.user;
-      debugPrint('>>> User signed up: ${user?.uid}');
+      debugPrint('>>> User signed up: ${user?.uid}, email: ${user?.email}');
       return user != null;
     } on FirebaseAuthException catch (e) {
-      debugPrint('!!! Firebase signup error: ${e.code} - ${e.message}');
+      String errorMsg;
+      switch (e.code) {
+        case 'email-already-in-use':
+          errorMsg = 'This email is already registered';
+          break;
+        case 'invalid-email':
+          errorMsg = 'Invalid email format';
+          break;
+        case 'weak-password':
+          errorMsg = 'Password is too weak';
+          break;
+        case 'operation-not-allowed':
+          errorMsg = 'Email/password accounts are not enabled';
+          break;
+        default:
+          errorMsg = 'Registration failed';
+      }
+      debugPrint('!!! Firebase signup error: ${e.code} - $errorMsg');
       return false;
     } catch (e) {
       debugPrint('!!! Signup error: $e');
