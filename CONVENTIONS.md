@@ -29,7 +29,7 @@ For EACH microtask:
 «Approval Syntax» (APPROVE/REVISE/ABORT options)
 
 2. CONSTRAINTS 
-- Maximum 3 file changes per task
+- Maximum 5 file changes per task
 - No cross-component edits without approval
 - All changes must be git-reversible
 - Documentation required before code
