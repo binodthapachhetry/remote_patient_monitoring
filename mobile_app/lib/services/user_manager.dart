@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'email_approval_service.dart';
 
 /// Manages user authentication using Firebase Auth.
 /// Provides a persistent user session with email/password authentication.
@@ -13,6 +14,8 @@ class UserManager {
   
   // Firebase Auth instance
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Email approval service
+  final EmailApprovalService _approvalService = EmailApprovalService();
   
   // Stream controller for compatibility with existing architecture
   final _authStateController = StreamController<bool>.broadcast();
@@ -91,6 +94,16 @@ class UserManager {
     if (email.isEmpty || password.isEmpty) return false;
     
     try {
+      // Check if email is in approved list before allowing registration
+      final isApproved = await _approvalService.isEmailApproved(email);
+      if (!isApproved) {
+        debugPrint('!!! Email not approved for registration: $email');
+        throw FirebaseAuthException(
+          code: 'email-not-approved',
+          message: 'This email is not approved for registration'
+        );
+      }
+      
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -102,6 +115,9 @@ class UserManager {
     } on FirebaseAuthException catch (e) {
       String errorMsg;
       switch (e.code) {
+        case 'email-not-approved':
+          errorMsg = 'This email is not approved for registration';
+          break;
         case 'email-already-in-use':
           errorMsg = 'This email is already registered';
           break;

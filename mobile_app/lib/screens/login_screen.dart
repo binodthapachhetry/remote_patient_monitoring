@@ -86,7 +86,9 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (!success && mounted) {
         setState(() {
-          _errorMessage = 'Could not create account. Email might be in use.';
+          // UserManager now passes specific error codes like 'email-not-approved'
+          // The error message is handled by UserManager
+          _errorMessage = 'Could not create account. Your email may not be approved for registration.';
           _isLoading = false;
         });
       }
