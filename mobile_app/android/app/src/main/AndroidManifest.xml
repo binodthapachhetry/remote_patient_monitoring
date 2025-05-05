@@ -6,6 +6,11 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <!-- Pre-Android 12 BLE requirement -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- Foreground service permissions -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- For Android 12+ foreground service type -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <application
         android:label="remote_patient_monitoring"
@@ -38,6 +43,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+            
+        <!-- Background BLE service -->
+        <service
+            android:name=".BleBackgroundService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
