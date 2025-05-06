@@ -112,7 +112,7 @@ class DeviceDiscoveryService {
 
   /// Begins continuous BLE scanning until [stop] is called.
   Future<void> start() async {
-    debugPrint('>>> DeviceDiscoveryService: start() called. _scanning=$_scanning'); // Add log
+    debugPrint('>>> DeviceDiscoveryService: start() called. _scanning=$_scanning, autoReconnect=$_autoReconnectEnabled, targetDevice=$_autoConnectDeviceId'); 
     if (_scanning) return;
     _scanning = true;
     
@@ -122,8 +122,13 @@ class DeviceDiscoveryService {
     // Forward flutter_blue_plus scan results into our controller.
     _subscription = FlutterBluePlus.scanResults.listen(
       (batch) {
+        debugPrint('>>> Scan batch received with ${batch.length} results');
+        
         for (final result in batch) {
           _controller.add(result);
+          
+          // Add more detailed device logging
+          debugPrint('>>> Found device: ${result.device.remoteId.str}, name: ${result.device.platformName}, adv name: ${result.advertisementData.advName}, RSSI: ${result.rssi}');
           
           // Check for auto-connect device match
           if (_autoReconnectEnabled && 
@@ -156,19 +161,23 @@ class DeviceDiscoveryService {
     // Cancel any existing timer
     _scanRestartTimer?.cancel();
     
-    // Create a new timer that fires after scan timeout
-    // Add a small buffer to ensure the previous scan has fully completed
-    _scanRestartTimer = Timer(const Duration(minutes: 1, seconds: 5), () async {
+    // Create a new timer that fires faster (30 seconds instead of 65)
+    _scanRestartTimer = Timer(const Duration(seconds: 30), () async {
       debugPrint('>>> Scan restart timer fired, restarting scan');
-      if (_autoReconnectEnabled && !_scanning) {
+      if (_autoReconnectEnabled) {
         try {
-          // If we're not already scanning, start a new scan
+          // Always stop the previous scan before starting a new one
+          if (_scanning) await stop();
+          // Start a new scan
           await start();
         } catch (e) {
           debugPrint('!!! Error restarting scan: $e');
-          // Try again in 10 seconds if there was an error
-          _scanRestartTimer = Timer(const Duration(seconds: 10), () async {
-            if (_autoReconnectEnabled) await start();
+          // Try again sooner if there was an error
+          _scanRestartTimer = Timer(const Duration(seconds: 5), () async {
+            if (_autoReconnectEnabled) {
+              if (_scanning) await stop();
+              await start();
+            }
           });
         }
       }
@@ -177,11 +186,23 @@ class DeviceDiscoveryService {
 
   /// Stops scanning and closes internal subscription.
   Future<void> stop() async {
-    debugPrint('>>> DeviceDiscoveryService: stop() called. _scanning=$_scanning'); // Add log
+    debugPrint('>>> DeviceDiscoveryService: stop() called. _scanning=$_scanning'); 
     if (!_scanning) return;
-    debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.stopScan()'); // Add log
-    await FlutterBluePlus.stopScan();
-    await _subscription?.cancel();
+    
+    try {
+      debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.stopScan()');
+      await FlutterBluePlus.stopScan();
+    } catch (e) {
+      debugPrint('!!! Error stopping scan: $e');
+      // Continue with cleanup even if stopScan fails
+    }
+    
+    try {
+      await _subscription?.cancel();
+    } catch (e) {
+      debugPrint('!!! Error cancelling subscription: $e');
+    }
+    
     _subscription = null;
     _scanning = false;
     
@@ -206,9 +227,20 @@ class DeviceDiscoveryService {
       // Pause scanning during connection attempt
       await stop();
       
-      debugPrint('>>> Attempting auto-connect to: ${device.remoteId.str}');
+      debugPrint('>>> Attempting auto-connect to: ${device.remoteId.str}, name: ${device.platformName}');
+      
+      // First try to disconnect if there's an existing connection to clean state
+      try {
+        debugPrint('>>> Attempting to disconnect first to clean state');
+        await device.disconnect();
+        await Future.delayed(const Duration(milliseconds: 500));
+      } catch (e) {
+        // Ignore disconnect errors, device might already be disconnected
+        debugPrint('>>> Disconnect before reconnect resulted in: $e');
+      }
+      
       // Use autoConnect: false to avoid MTU negotiation conflict
-      await device.connect(autoConnect: false);
+      await device.connect(autoConnect: false, timeout: const Duration(seconds: 15));
       debugPrint('>>> Auto-connected successfully to: ${device.remoteId.str}');
       
       // Reset retry counter on successful connection
@@ -219,6 +251,7 @@ class DeviceDiscoveryService {
       
       // Notify callback
       if (_onDeviceConnected != null) {
+        debugPrint('>>> Calling onDeviceConnected callback');
         _onDeviceConnected!(device);
       }
     } catch (e) {
@@ -244,6 +277,40 @@ class DeviceDiscoveryService {
     // Cancel any existing monitoring
     _connectionStateTimer?.cancel();
     
+    // Subscribe to connection state changes directly
+    try {
+      device.connectionState.listen((BluetoothConnectionState state) {
+        debugPrint('>>> Connection state changed to: $state');
+        
+        // If state changed to disconnected and we were previously connected
+        if (state == BluetoothConnectionState.disconnected && 
+            _lastKnownState == BluetoothConnectionState.connected) {
+          debugPrint('>>> Device disconnected, preparing for reconnection');
+          
+          // Update last known state
+          _lastKnownState = BluetoothConnectionState.disconnected;
+          
+          // Restart scanning to find the device again
+          if (!_scanning && _autoReconnectEnabled) {
+            debugPrint('>>> Restarting scan after device disconnection detected by stream');
+            start(); // Don't await as we're in a listener
+          }
+        }
+        
+        // Update last known state
+        _lastKnownState = state;
+      });
+      
+      debugPrint('>>> Started streaming connection state monitoring for ${device.remoteId.str}');
+    } catch (e) {
+      debugPrint('!!! Error setting up connection state listener: $e');
+      // Set up a timer as backup monitoring method
+      _setupBackupConnectionMonitoring(device);
+    }
+  }
+  
+  /// Set up a backup timer-based monitoring approach in case the stream-based approach fails
+  void _setupBackupConnectionMonitoring(BluetoothDevice device) {
     // Set up a timer to periodically check connection state
     _connectionStateTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       if (!_autoReconnectEnabled) {
@@ -254,11 +321,12 @@ class DeviceDiscoveryService {
       try {
         // Get current connection state
         final state = await device.connectionState.first;
+        debugPrint('>>> Backup monitor: connection state is $state');
         
         // If state changed to disconnected
         if (state == BluetoothConnectionState.disconnected && 
             _lastKnownState == BluetoothConnectionState.connected) {
-          debugPrint('>>> Device disconnected, preparing for reconnection');
+          debugPrint('>>> Backup monitor: Device disconnected, preparing for reconnection');
           
           // Device disconnected, prepare for reconnection
           _lastKnownState = BluetoothConnectionState.disconnected;
@@ -268,7 +336,7 @@ class DeviceDiscoveryService {
           
           // Restart scanning to find the device again
           if (!_scanning && _autoReconnectEnabled) {
-            debugPrint('>>> Restarting scan after device disconnection');
+            debugPrint('>>> Backup monitor: Restarting scan after device disconnection');
             await start();
           }
         }
