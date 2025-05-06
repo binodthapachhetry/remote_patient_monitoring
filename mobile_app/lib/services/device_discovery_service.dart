@@ -218,23 +218,12 @@ class DeviceDiscoveryService {
     
     try {
       debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.startScan()');
-      
-      // Try to use balanced scan mode first which provides better results
-      // Fall back to low power mode if there's an error
-      try {
-        await FlutterBluePlus.startScan(
-          scanMode: ScanMode.balanced, 
-          allowDuplicates: false,
-          timeout: const Duration(seconds: 45), // Slightly shorter timeout
-        );
-      } catch (e) {
-        debugPrint('!!! Error with balanced scan mode, falling back to low power: $e');
-        await FlutterBluePlus.startScan(
-          scanMode: ScanMode.lowPower, 
-          allowDuplicates: false,
-          timeout: const Duration(minutes: 1),
-        );
-      }
+        
+      // Use standard scan parameters that are compatible with the installed version
+      await FlutterBluePlus.startScan(
+        allowDuplicates: false,
+        timeout: const Duration(seconds: 45),
+      );
       
       // Set up a timer to restart scanning after the timeout 
       // This ensures we maintain continuous scanning capability
