@@ -20,6 +20,10 @@ class DeviceDiscoveryService {
   // Connection state tracking
   static bool _isConnecting = false;
   static int _retryCount = 0;
+  Timer? _scanRestartTimer;
+  Timer? _connectionStateTimer;
+  BluetoothConnectionState _lastKnownState = BluetoothConnectionState.disconnected;
+  BluetoothDevice? _currentDevice;
   
   /// Whether auto-reconnect is currently enabled
   bool get autoReconnectEnabled => _autoReconnectEnabled;
@@ -45,6 +49,9 @@ class DeviceDiscoveryService {
     _autoReconnectEnabled = true;
     _onDeviceConnected = onConnected;
     
+    // Reset retry counter when enabling auto-reconnect
+    _resetRetryCounter();
+    
     // Save preferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('autoConnectDeviceId', deviceId);
@@ -66,7 +73,24 @@ class DeviceDiscoveryService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('autoReconnectEnabled', false);
     
+    // Cancel any restart timers
+    _scanRestartTimer?.cancel();
+    _scanRestartTimer = null;
+    
+    // Cancel connection state monitoring
+    _connectionStateTimer?.cancel();
+    _connectionStateTimer = null;
+    
+    // Reset retry counter
+    _resetRetryCounter();
+    
     debugPrint('>>> Auto-reconnect disabled');
+  }
+  
+  /// Reset the retry counter to start fresh
+  void _resetRetryCounter() {
+    _retryCount = 0;
+    debugPrint('>>> Retry counter reset to 0');
   }
   
   /// Initialize auto-reconnect from saved preferences
@@ -91,6 +115,10 @@ class DeviceDiscoveryService {
     debugPrint('>>> DeviceDiscoveryService: start() called. _scanning=$_scanning'); // Add log
     if (_scanning) return;
     _scanning = true;
+    
+    // Reset retry counter on fresh start
+    _resetRetryCounter();
+    
     // Forward flutter_blue_plus scan results into our controller.
     _subscription = FlutterBluePlus.scanResults.listen(
       (batch) {
@@ -111,12 +139,40 @@ class DeviceDiscoveryService {
         _controller.addError(e);
       },
     );
+    
     debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.startScan()'); // Add log
     await FlutterBluePlus.startScan(
       // Change scan mode here if power optimisation required.
-      // Use a long timeout instead of zero to rule out immediate stop issues.
-      timeout: const Duration(minutes: 1), // e.g., 1 minute timeout
+      timeout: const Duration(minutes: 1), // 1 minute timeout
     );
+    
+    // Set up a timer to restart scanning after the timeout 
+    // This ensures we maintain continuous scanning capability
+    _setupScanRestartTimer();
+  }
+  
+  /// Set up a timer to restart scanning after timeout
+  void _setupScanRestartTimer() {
+    // Cancel any existing timer
+    _scanRestartTimer?.cancel();
+    
+    // Create a new timer that fires after scan timeout
+    // Add a small buffer to ensure the previous scan has fully completed
+    _scanRestartTimer = Timer(const Duration(minutes: 1, seconds: 5), () async {
+      debugPrint('>>> Scan restart timer fired, restarting scan');
+      if (_autoReconnectEnabled && !_scanning) {
+        try {
+          // If we're not already scanning, start a new scan
+          await start();
+        } catch (e) {
+          debugPrint('!!! Error restarting scan: $e');
+          // Try again in 10 seconds if there was an error
+          _scanRestartTimer = Timer(const Duration(seconds: 10), () async {
+            if (_autoReconnectEnabled) await start();
+          });
+        }
+      }
+    });
   }
 
   /// Stops scanning and closes internal subscription.
@@ -128,6 +184,9 @@ class DeviceDiscoveryService {
     await _subscription?.cancel();
     _subscription = null;
     _scanning = false;
+    
+    // Don't cancel the restart timer here to allow periodic scanning
+    // The timer will restart scanning if auto-reconnect is still enabled
   }
 
   /// Attempt to connect to the auto-connect device
@@ -142,6 +201,8 @@ class DeviceDiscoveryService {
     
     try {
       _isConnecting = true;
+      _currentDevice = device;
+      
       // Pause scanning during connection attempt
       await stop();
       
@@ -149,6 +210,12 @@ class DeviceDiscoveryService {
       // Use autoConnect: false to avoid MTU negotiation conflict
       await device.connect(autoConnect: false);
       debugPrint('>>> Auto-connected successfully to: ${device.remoteId.str}');
+      
+      // Reset retry counter on successful connection
+      _resetRetryCounter();
+      
+      // Set up connection state monitoring
+      _monitorConnectionState(device);
       
       // Notify callback
       if (_onDeviceConnected != null) {
@@ -170,6 +237,58 @@ class DeviceDiscoveryService {
     } finally {
       _isConnecting = false;
     }
+  }
+  
+  /// Monitor connection state of the device to detect disconnections
+  void _monitorConnectionState(BluetoothDevice device) {
+    // Cancel any existing monitoring
+    _connectionStateTimer?.cancel();
+    
+    // Set up a timer to periodically check connection state
+    _connectionStateTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (!_autoReconnectEnabled) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        // Get current connection state
+        final state = await device.connectionState.first;
+        
+        // If state changed to disconnected
+        if (state == BluetoothConnectionState.disconnected && 
+            _lastKnownState == BluetoothConnectionState.connected) {
+          debugPrint('>>> Device disconnected, preparing for reconnection');
+          
+          // Device disconnected, prepare for reconnection
+          _lastKnownState = BluetoothConnectionState.disconnected;
+          
+          // Cancel this timer since we know device is disconnected
+          timer.cancel();
+          
+          // Restart scanning to find the device again
+          if (!_scanning && _autoReconnectEnabled) {
+            debugPrint('>>> Restarting scan after device disconnection');
+            await start();
+          }
+        }
+        
+        // Update last known state
+        _lastKnownState = state;
+        
+      } catch (e) {
+        debugPrint('!!! Error checking connection state: $e');
+        // Error likely means device is disconnected
+        _lastKnownState = BluetoothConnectionState.disconnected;
+        
+        // Cancel timer and restart scan
+        timer.cancel();
+        if (!_scanning && _autoReconnectEnabled) {
+          debugPrint('>>> Restarting scan after connection error');
+          await start();
+        }
+      }
+    });
   }
 
   // ─── Internals ──────────────────────────────────────────────────────
