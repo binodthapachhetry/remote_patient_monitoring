@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../models/physio_sample.dart';
+import '../models/health_measurement.dart';
+import '../services/sync_service.dart';
 
 /// Base class every BLE sensor profile must extend.
 ///
@@ -26,4 +28,9 @@ abstract class SensorAdapter {
 
   /// Stops notifications, closes streams, disconnects if desired.
   Future<void> dispose();
+  
+  /// Helper to store a sample in the HL7 sync pipeline
+  void storeForSync(PhysioSample sample) {
+    SyncService().storeMeasurement(sample.toHealthMeasurement());
+  }
 }

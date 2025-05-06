@@ -6,6 +6,7 @@ class PhysioSample {
   final PhysioMetric metric;
   final num value;
   final DateTime timestamp;
+  final Map<String, dynamic>? metadata;
 
   const PhysioSample({
     required this.participantId,
@@ -13,6 +14,7 @@ class PhysioSample {
     required this.metric,
     required this.value,
     required this.timestamp,
+    this.metadata,
   });
 
   Map<String, dynamic> toJson() => {
@@ -21,7 +23,49 @@ class PhysioSample {
         'metric': metric.name,
         'value': value,
         'timestamp': timestamp.toIso8601String(),
+        if (metadata != null) 'metadata': metadata,
       };
+      
+  /// Convert to a HealthMeasurement for HL7 processing
+  HealthMeasurement toHealthMeasurement() {
+    return HealthMeasurement(
+      participantId: participantId,
+      deviceId: deviceId,
+      type: _getHealthMeasurementType(),
+      value: value.toDouble(),
+      unit: _getUnitForMetric(),
+      timestamp: timestamp.millisecondsSinceEpoch,
+      metadata: metadata,
+    );
+  }
+  
+  /// Map PhysioMetric to HealthMeasurement type string
+  String _getHealthMeasurementType() {
+    switch (metric) {
+      case PhysioMetric.weightKg:
+        return 'weight';
+      case PhysioMetric.heartRate:
+        return 'heart_rate';
+      case PhysioMetric.glucoseMgDl:
+        return 'glucose';
+      default:
+        return metric.name;
+    }
+  }
+  
+  /// Get unit for the metric type
+  String _getUnitForMetric() {
+    switch (metric) {
+      case PhysioMetric.weightKg:
+        return 'kg';
+      case PhysioMetric.heartRate:
+        return 'bpm';
+      case PhysioMetric.glucoseMgDl:
+        return 'mg/dL';
+      default:
+        return '';
+    }
+  }
 }
 
 /// Enumerates the physiological metrics our MVP supports.

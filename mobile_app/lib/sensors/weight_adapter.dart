@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart'; // Import for debugPrint
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../models/physio_sample.dart';
+import '../models/health_measurement.dart';
+import '../services/sync_service.dart';
 import 'sensor_adapter.dart';
 
 /// Adapter for Bluetooth SIG Weight-Scale Service (0x181D).
@@ -78,15 +80,34 @@ class WeightAdapter extends SensorAdapter {
     debugPrint('>>> Parsed Weight: $weightKg kg (Raw Value: $rawValue)'); // Add detailed log
     // --- End New Parsing Logic ---
 
+    // Create timestamp for consistent usage
+    final timestamp = DateTime.now();
+
+    // Add to PhysioSample stream for real-time UI
     _controller.add(
       PhysioSample(
         participantId: participantId,
         deviceId: deviceId,
         metric: PhysioMetric.weightKg,
         value: weightKg,
-        timestamp: DateTime.now(),
+        timestamp: timestamp,
       ),
     );
+    
+    // Also store measurement in HL7 pipeline for sync
+    final measurement = HealthMeasurement(
+      participantId: participantId,
+      deviceId: deviceId,
+      type: 'weight',
+      value: weightKg,
+      unit: 'kg',
+      timestamp: timestamp.millisecondsSinceEpoch,
+      metadata: {'rawValue': rawValue.toString(), 'hexPayload': hexPayload},
+    );
+    
+    // Store in sync service database
+    SyncService().storeMeasurement(measurement);
+    debugPrint('>>> Weight measurement stored for HL7 sync: $weightKg kg');
   }
 
   @override
