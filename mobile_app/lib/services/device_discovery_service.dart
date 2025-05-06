@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as Math;
 
 import 'package:flutter/foundation.dart'; // Import for debugPrint
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -107,10 +108,35 @@ class DeviceDiscoveryService {
       // Create a BluetoothDevice instance from the ID without scanning
       final device = BluetoothDevice.fromId(_autoConnectDeviceId!);
       
-      // Attempt connection with autoConnect: true which works better for background reconnection
-      await device.connect(autoConnect: true, timeout: const Duration(seconds: 30));
+      // Check connection state before attempting connection
+      // This avoids unnecessary reconnection attempts if already connected
+      final initialState = await device.connectionState.first;
+      if (initialState == BluetoothConnectionState.connected) {
+        debugPrint('>>> Device already connected, skipping direct connection');
+        _currentDevice = device;
+        _monitorConnectionState(device);
+        _resetRetryCounter();
+        
+        // Notify callback
+        if (_onDeviceConnected != null) {
+          _onDeviceConnected!(device);
+        }
+        return;
+      }
+      
+      // First try with autoConnect: false for immediate connection
+      // This is more reliable when the device is definitely in range and advertising
+      try {
+        await device.connect(autoConnect: false, timeout: const Duration(seconds: 15));
+      } catch (e) {
+        // If immediate connection fails, try with autoConnect: true as fallback
+        // This works better for background reconnection with some devices
+        debugPrint('>>> Immediate connection failed, trying with autoConnect: true');
+        await device.connect(autoConnect: true, timeout: const Duration(seconds: 30));
+      }
       
       debugPrint('>>> Direct connection successful to: $_autoConnectDeviceId');
+      _currentDevice = device;
       _resetRetryCounter();
       
       // Set up connection state monitoring
@@ -124,6 +150,10 @@ class DeviceDiscoveryService {
       debugPrint('!!! Direct connection failed: $e');
       // Increment retry counter but cap it
       _retryCount = _retryCount < 5 ? _retryCount + 1 : 5;
+      
+      // Apply exponential backoff for next retry
+      final delaySeconds = 5 * (1 << Math.min(_retryCount, 4));
+      debugPrint('>>> Will retry after $delaySeconds seconds');
     } finally {
       _isConnecting = false;
     }
@@ -163,15 +193,20 @@ class DeviceDiscoveryService {
         for (final result in batch) {
           _controller.add(result);
           
-          // Add more detailed device logging
-          // debugPrint('>>> Found device: ${result.device.remoteId.str}, name: ${result.device.platformName}, adv name: ${result.advertisementData.advName}, RSSI: ${result.rssi}');
-          
-          // Check for auto-connect device match
-          if (_autoReconnectEnabled && 
-              _autoConnectDeviceId != null && 
+          // Log key devices with RSSI for signal quality assessment
+          if (_autoConnectDeviceId != null && 
               result.device.remoteId.str == _autoConnectDeviceId) {
-            debugPrint('>>> Found auto-connect device: ${result.device.remoteId.str}');
-            _attemptAutoConnect(result.device);
+            debugPrint('>>> Found auto-connect device: ${result.device.remoteId.str}, RSSI: ${result.rssi} dBm');
+            
+            // Only try to connect if signal strength is reasonable
+            // -80 dBm is generally considered a minimum usable signal for BLE
+            if (result.rssi >= -80) {
+              debugPrint('>>> Signal strength sufficient for connection attempt');
+              _attemptAutoConnect(result.device);
+            } else {
+              debugPrint('>>> Signal too weak for reliable connection: ${result.rssi} dBm, waiting for better signal');
+              // Don't attempt connection but keep scanning for better signal
+            }
           }
         }
       },
@@ -181,17 +216,48 @@ class DeviceDiscoveryService {
       },
     );
     
-    debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.startScan()'); // Add log
-    await FlutterBluePlus.startScan(
-      // Use low power scan mode which has fewer background restrictions
-      scanMode: ScanMode.lowPower,
-      allowDuplicates: false, // Reduce power consumption
-      timeout: const Duration(minutes: 1), // 1 minute timeout
-    );
-    
-    // Set up a timer to restart scanning after the timeout 
-    // This ensures we maintain continuous scanning capability
-    _setupScanRestartTimer();
+    try {
+      debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.startScan()');
+      
+      // Try to use balanced scan mode first which provides better results
+      // Fall back to low power mode if there's an error
+      try {
+        await FlutterBluePlus.startScan(
+          scanMode: ScanMode.balanced, 
+          allowDuplicates: false,
+          timeout: const Duration(seconds: 45), // Slightly shorter timeout
+        );
+      } catch (e) {
+        debugPrint('!!! Error with balanced scan mode, falling back to low power: $e');
+        await FlutterBluePlus.startScan(
+          scanMode: ScanMode.lowPower, 
+          allowDuplicates: false,
+          timeout: const Duration(minutes: 1),
+        );
+      }
+      
+      // Set up a timer to restart scanning after the timeout 
+      // This ensures we maintain continuous scanning capability
+      _setupScanRestartTimer();
+    } catch (e) {
+      // Handle scan start failures gracefully
+      debugPrint('!!! Failed to start scanning: $e');
+      _scanning = false;
+      
+      // If scanning fails but we have a known device, try direct connection
+      if (_autoReconnectEnabled && _autoConnectDeviceId != null && !_isConnecting) {
+        debugPrint('>>> Scanning failed, attempting direct connection as fallback');
+        attemptDirectConnection();
+      }
+      
+      // Reschedule a scan attempt after a delay
+      Future.delayed(const Duration(seconds: 10), () {
+        if (_autoReconnectEnabled && !_scanning) {
+          debugPrint('>>> Retrying scan after previous failure');
+          start();
+        }
+      });
+    }
   }
   
   /// Set up a timer to restart scanning after timeout
@@ -199,8 +265,9 @@ class DeviceDiscoveryService {
     // Cancel any existing timer
     _scanRestartTimer?.cancel();
     
-    // Create a new timer that fires faster (30 seconds instead of 65)
-    _scanRestartTimer = Timer(const Duration(seconds: 30), () async {
+    // Create a timer with dynamic timing based on app state
+    final scanRestartSeconds = 30; // Base duration for restart
+    _scanRestartTimer = Timer(Duration(seconds: scanRestartSeconds), () async {
       debugPrint('>>> Scan restart timer fired, restarting scan');
       if (_autoReconnectEnabled) {
         try {
@@ -209,20 +276,26 @@ class DeviceDiscoveryService {
           // Start a new scan
           await start();
           
-          // If we have a known device ID, also try direct connection as a fallback
-          // This helps when scanning is throttled by the OS but connections are still allowed
+          // If we have a known device ID, implement the hybrid approach
           if (_autoConnectDeviceId != null) {
             // Small delay to allow the scan to find the device first if possible
-            await Future.delayed(const Duration(seconds: 5));
-            // Only attempt direct connection if device hasn't been found by scanning
-            if (_autoReconnectEnabled && !_isConnecting) {
+            // This prevents unnecessary direct connection attempts when scanning works
+            await Future.delayed(const Duration(seconds: 3));
+            
+            // Check if we're still auto-reconnect enabled and not already connecting
+            if (_autoReconnectEnabled && !_isConnecting && _currentDevice == null) {
+              debugPrint('>>> Device not found by scanning, attempting direct connection');
               attemptDirectConnection();
             }
           }
         } catch (e) {
           debugPrint('!!! Error restarting scan: $e');
-          // Try again sooner if there was an error
-          _scanRestartTimer = Timer(const Duration(seconds: 5), () async {
+          
+          // Use exponential backoff for error recovery to avoid battery drain
+          final retryDelay = _retryCount < 3 ? 5 : 10 * (1 << (_retryCount - 3));
+          debugPrint('>>> Will retry scan in $retryDelay seconds (retry #$_retryCount)');
+          
+          _scanRestartTimer = Timer(Duration(seconds: retryDelay), () async {
             if (_autoReconnectEnabled) {
               if (_scanning) await stop();
               await start();
@@ -326,9 +399,13 @@ class DeviceDiscoveryService {
     // Cancel any existing monitoring
     _connectionStateTimer?.cancel();
     
+    // Track this as current device
+    _currentDevice = device;
+    
     // Subscribe to connection state changes directly
     try {
-      device.connectionState.listen((BluetoothConnectionState state) {
+      StreamSubscription<BluetoothConnectionState>? stateSubscription;
+      stateSubscription = device.connectionState.listen((BluetoothConnectionState state) {
         debugPrint('>>> Connection state changed to: $state');
         
         // If state changed to disconnected and we were previously connected
@@ -338,16 +415,44 @@ class DeviceDiscoveryService {
           
           // Update last known state
           _lastKnownState = BluetoothConnectionState.disconnected;
+          _currentDevice = null;
           
-          // Restart scanning to find the device again
-          if (!_scanning && _autoReconnectEnabled) {
-            debugPrint('>>> Restarting scan after device disconnection detected by stream');
-            start(); // Don't await as we're in a listener
+          // Implement the hybrid approach after disconnection:
+          // 1. Start scanning immediately to find advertising devices
+          // 2. Schedule a direct connection attempt as fallback
+          if (_autoReconnectEnabled) {
+            if (!_scanning) {
+              debugPrint('>>> Restarting scan after device disconnection detected by stream');
+              start(); // Don't await as we're in a listener
+            }
+            
+            // Schedule a direct connection attempt after a short delay
+            // This helps when the device is not advertising immediately after disconnection
+            Future.delayed(const Duration(seconds: 5), () {
+              if (_autoReconnectEnabled && !_isConnecting && _currentDevice == null) {
+                debugPrint('>>> Attempting direct connection after disconnection');
+                attemptDirectConnection();
+              }
+            });
           }
+        } else if (state == BluetoothConnectionState.connected) {
+          // Successfully connected (or reconnected)
+          _lastKnownState = state;
+          _resetRetryCounter(); // Reset retry counter on successful connection
+        } else {
+          // Update last known state for other cases
+          _lastKnownState = state;
         }
-        
-        // Update last known state
-        _lastKnownState = state;
+      }, onDone: () {
+        // When the stream is done (device disconnected/disposed), clean up
+        debugPrint('>>> Connection state stream closed for ${device.remoteId.str}');
+        _lastKnownState = BluetoothConnectionState.disconnected;
+        stateSubscription?.cancel();
+        _currentDevice = null;
+      }, onError: (e) {
+        debugPrint('!!! Error in connection state stream: $e');
+        // Set up a timer as backup monitoring method
+        _setupBackupConnectionMonitoring(device);
       });
       
       debugPrint('>>> Started streaming connection state monitoring for ${device.remoteId.str}');
