@@ -130,12 +130,21 @@ class DeviceDiscoveryService {
   Future<void> _attemptAutoConnect(BluetoothDevice device) async {
     if (!_autoReconnectEnabled) return;
     
+    // Prevent multiple connection attempts at the same time
+    static bool _isConnecting = false;
+    if (_isConnecting) {
+      debugPrint('>>> Auto-connect already in progress, skipping');
+      return;
+    }
+    
     try {
+      _isConnecting = true;
       // Pause scanning during connection attempt
       await stop();
       
       debugPrint('>>> Attempting auto-connect to: ${device.remoteId.str}');
-      await device.connect(autoConnect: true);
+      // Use autoConnect: false to avoid MTU negotiation conflict
+      await device.connect(autoConnect: false);
       debugPrint('>>> Auto-connected successfully to: ${device.remoteId.str}');
       
       // Notify callback
@@ -147,9 +156,17 @@ class DeviceDiscoveryService {
       
       // Resume scanning after failure (with delay to avoid rapid retries)
       if (_autoReconnectEnabled) {
-        await Future.delayed(const Duration(seconds: 5));
+        // Use exponential backoff for reconnection attempts
+        static int _retryCount = 0;
+        final delay = Duration(seconds: 5 * (1 << _retryCount));
+        _retryCount = _retryCount < 5 ? _retryCount + 1 : 5; // Cap at ~160 seconds
+        
+        debugPrint('>>> Will retry auto-connect in ${delay.inSeconds} seconds');
+        await Future.delayed(delay);
         await start();
       }
+    } finally {
+      _isConnecting = false;
     }
   }
 
