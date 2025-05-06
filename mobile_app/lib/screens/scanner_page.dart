@@ -80,6 +80,30 @@ class _ScannerPageState extends State<ScannerPage> {
       }
     });
   }
+  
+  // Clear current results and start a new scan
+  Future<void> _restartScan() async {
+    // Cancel any existing subscription
+    await _sub?.cancel();
+    
+    // If scanner is already running, stop it first
+    await _scanner.stop();
+    
+    // Clear current results
+    setState(() {
+      _results.clear();
+    });
+    
+    // Start a new scan
+    await _startScan();
+    
+    // Show feedback to user
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Scanning for devices...')),
+      );
+    }
+  }
 
   // On tap, bind to the selected device and listen for weight samples
   Future<void> _onTap(ScanResult r) async {
@@ -153,10 +177,10 @@ class _ScannerPageState extends State<ScannerPage> {
         }
       }
     }
-    // Optionally, restart scanning if all connection attempts fail
-    // if (!connected) {
-    //   await _startScan();
-    // }
+    // Restart scanning if all connection attempts fail
+    if (!connected) {
+      await _restartScan();
+    }
   }
 
   @override
@@ -218,6 +242,12 @@ class _ScannerPageState extends State<ScannerPage> {
       appBar: AppBar(
         title: const Text('Scan for Weight-Scale'),
         actions: [
+          // Refresh button
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Scan for devices',
+            onPressed: _restartScan,
+          ),
           // User menu
           PopupMenuButton<String>(
             icon: const Icon(Icons.account_circle),
