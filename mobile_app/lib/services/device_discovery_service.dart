@@ -128,7 +128,7 @@ class DeviceDiscoveryService {
           _controller.add(result);
           
           // Add more detailed device logging
-          debugPrint('>>> Found device: ${result.device.remoteId.str}, name: ${result.device.platformName}, adv name: ${result.advertisementData.advName}, RSSI: ${result.rssi}');
+          // debugPrint('>>> Found device: ${result.device.remoteId.str}, name: ${result.device.platformName}, adv name: ${result.advertisementData.advName}, RSSI: ${result.rssi}');
           
           // Check for auto-connect device match
           if (_autoReconnectEnabled && 
