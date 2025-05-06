@@ -17,6 +17,10 @@ class DeviceDiscoveryService {
   String? _autoConnectDeviceId;
   bool _autoReconnectEnabled = false;
   
+  // Connection state tracking
+  static bool _isConnecting = false;
+  static int _retryCount = 0;
+  
   /// Whether auto-reconnect is currently enabled
   bool get autoReconnectEnabled => _autoReconnectEnabled;
   
@@ -131,7 +135,6 @@ class DeviceDiscoveryService {
     if (!_autoReconnectEnabled) return;
     
     // Prevent multiple connection attempts at the same time
-    static bool _isConnecting = false;
     if (_isConnecting) {
       debugPrint('>>> Auto-connect already in progress, skipping');
       return;
@@ -157,7 +160,6 @@ class DeviceDiscoveryService {
       // Resume scanning after failure (with delay to avoid rapid retries)
       if (_autoReconnectEnabled) {
         // Use exponential backoff for reconnection attempts
-        static int _retryCount = 0;
         final delay = Duration(seconds: 5 * (1 << _retryCount));
         _retryCount = _retryCount < 5 ? _retryCount + 1 : 5; // Cap at ~160 seconds
         
