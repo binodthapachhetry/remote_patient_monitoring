@@ -207,6 +207,9 @@ class _ScannerPageState extends State<ScannerPage> {
         debugPrint('>>> Auto-reconnect callback from UI toggle');
         _onAutoConnectSuccess(device);
       });
+      
+      // When enabling auto-reconnect, also try a direct connection immediately
+      _scanner.attemptDirectConnection();
     } else {
       await _scanner.disableAutoReconnect();
     }
@@ -308,6 +311,14 @@ class _ScannerPageState extends State<ScannerPage> {
                     value: _autoReconnectEnabled,
                     onChanged: _autoConnectDeviceId != null ? _toggleAutoReconnect : null,
                   ),
+                  if (_autoReconnectEnabled && _autoConnectDeviceId != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: Text(
+                        'Note: For best results, avoid locking your screen when immediate reconnection is needed.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ),
                 ],
               ),
             ),

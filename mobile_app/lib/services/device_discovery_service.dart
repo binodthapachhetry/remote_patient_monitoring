@@ -93,6 +93,42 @@ class DeviceDiscoveryService {
     debugPrint('>>> Retry counter reset to 0');
   }
   
+  /// Attempt direct connection when scanning fails to find the device
+  /// This is a fallback mechanism for when the device is known but not discovered during scan
+  Future<void> attemptDirectConnection() async {
+    if (!_autoReconnectEnabled || _autoConnectDeviceId == null || _isConnecting) {
+      return;
+    }
+    
+    try {
+      debugPrint('>>> Attempting direct connection to: $_autoConnectDeviceId');
+      _isConnecting = true;
+      
+      // Create a BluetoothDevice instance from the ID without scanning
+      final device = BluetoothDevice.fromId(_autoConnectDeviceId!);
+      
+      // Attempt connection with autoConnect: true which works better for background reconnection
+      await device.connect(autoConnect: true, timeout: const Duration(seconds: 30));
+      
+      debugPrint('>>> Direct connection successful to: $_autoConnectDeviceId');
+      _resetRetryCounter();
+      
+      // Set up connection state monitoring
+      _monitorConnectionState(device);
+      
+      // Notify callback
+      if (_onDeviceConnected != null) {
+        _onDeviceConnected!(device);
+      }
+    } catch (e) {
+      debugPrint('!!! Direct connection failed: $e');
+      // Increment retry counter but cap it
+      _retryCount = _retryCount < 5 ? _retryCount + 1 : 5;
+    } finally {
+      _isConnecting = false;
+    }
+  }
+  
   /// Initialize auto-reconnect from saved preferences
   Future<void> initAutoReconnect(
     void Function(BluetoothDevice device)? onConnected
@@ -147,7 +183,9 @@ class DeviceDiscoveryService {
     
     debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.startScan()'); // Add log
     await FlutterBluePlus.startScan(
-      // Change scan mode here if power optimisation required.
+      // Use low power scan mode which has fewer background restrictions
+      scanMode: ScanMode.lowPower,
+      allowDuplicates: false, // Reduce power consumption
       timeout: const Duration(minutes: 1), // 1 minute timeout
     );
     
@@ -170,6 +208,17 @@ class DeviceDiscoveryService {
           if (_scanning) await stop();
           // Start a new scan
           await start();
+          
+          // If we have a known device ID, also try direct connection as a fallback
+          // This helps when scanning is throttled by the OS but connections are still allowed
+          if (_autoConnectDeviceId != null) {
+            // Small delay to allow the scan to find the device first if possible
+            await Future.delayed(const Duration(seconds: 5));
+            // Only attempt direct connection if device hasn't been found by scanning
+            if (_autoReconnectEnabled && !_isConnecting) {
+              attemptDirectConnection();
+            }
+          }
         } catch (e) {
           debugPrint('!!! Error restarting scan: $e');
           // Try again sooner if there was an error
