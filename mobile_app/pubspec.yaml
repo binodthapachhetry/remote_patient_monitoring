@@ -9,21 +9,21 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_blue_plus: ^1.31.3       # BLE stack
-  firebase_core: ^2.24.2           # Firestore init
-  firebase_auth: ^4.15.3           # Firebase Authentication
-  cloud_firestore: ^4.15.3         # Participant↔device mapping
-  googleapis: ^13.1.0              # Pub/Sub REST client
-  permission_handler: ^11.3.0      # Runtime BLE + location permissions
+  firebase_core: ^3.13.0           # Firestore init
+  firebase_auth: ^5.5.3           # Firebase Authentication
+  cloud_firestore: ^5.6.7         # Participant↔device mapping
+  googleapis: ^14.0.0              # Pub/Sub REST client
+  permission_handler: ^12.0.0+1      # Runtime BLE + location permissions
   shared_preferences: ^2.2.3       # Local key-value storage (or latest version)
-  uuid: ^3.0.7                     # For unique ID generation
-  connectivity_plus: ^5.0.1        # Network connectivity monitoring
+  uuid: ^4.5.1                     # For unique ID generation
+  connectivity_plus: ^6.1.4        # Network connectivity monitoring
   sqflite: ^2.3.0                  # SQLite database
-  intl: ^0.18.1                    # Date formatting
+  intl: ^0.20.2                    # Date formatting
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.1
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
