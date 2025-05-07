@@ -16,8 +16,14 @@ import androidx.core.app.NotificationCompat
  * Foreground service that maintains BLE connections when app is in background.
  * This service creates a persistent notification to inform the user that the app
  * is running in the background and keeping BLE connections active.
+ * 
+ * Battery optimization exemption is recommended for reliable operation.
  */
 class BleBackgroundService : Service() {
+    companion object {
+        // Flag to track if battery optimization request has been shown
+        var batteryOptimizationRequested = false
+    }
     private val binder = LocalBinder()
     private val CHANNEL_ID = "BleBackgroundServiceChannel"
     private val NOTIFICATION_ID = 1
@@ -53,6 +59,29 @@ class BleBackgroundService : Service() {
             .build()
 
         startForeground(NOTIFICATION_ID, notification)
+        
+        // Check battery state and adjust wake lock duration if needed
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val batteryLevel = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        
+        // If battery is low (below 20%), reduce wake lock duration
+        if (batteryLevel <= 20) {
+            // Release existing wake lock if any
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+            // Create new wake lock with shorter duration
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "BleBackgroundService::WakeLock"
+            )
+            wakeLock?.acquire(15*60*1000L) // 15 minutes timeout
+            Log.d("BleBackgroundService", "Battery low ($batteryLevel%), reduced wake lock to 15 minutes")
+        }
+        
         return START_REDELIVER_INTENT // Ensures service restarts with same intent
     }
 

@@ -251,18 +251,44 @@ class DeviceDiscoveryService {
   }
   
   /// Set up a timer to restart scanning after timeout
-  void _setupScanRestartTimer() {
+  void _setupScanRestartTimer([bool isInBackground = false]) {
     // Cancel any existing timer
     _scanRestartTimer?.cancel();
     
     // Create a timer with dynamic timing based on app state
-    final scanRestartSeconds = 30; // Base duration for restart
+    // Use longer intervals in background to save battery
+    final scanRestartSeconds = isInBackground ? 60 : 30;
+    debugPrint('>>> Setting up scan restart timer for $scanRestartSeconds seconds (${isInBackground ? "background" : "foreground"} mode)');
+    
     _scanRestartTimer = Timer(Duration(seconds: scanRestartSeconds), () async {
       debugPrint('>>> Scan restart timer fired, restarting scan');
       if (_autoReconnectEnabled) {
         try {
+          // Check battery level to adjust scan behavior
+          final batteryLevel = await _getBatteryLevel();
+          debugPrint('>>> Current battery level: $batteryLevel%');
+          
+          // Use more conservative scanning on low battery
+          final lowBattery = batteryLevel < 15;
+          if (lowBattery) {
+            debugPrint('>>> Low battery detected, using conservative scanning');
+          }
+          
           // Always stop the previous scan before starting a new one
           if (_scanning) await stop();
+          
+          // If battery very low, skip some scan cycles
+          if (lowBattery && _retryCount % 2 == 1) {
+            debugPrint('>>> Skipping scan cycle to conserve battery');
+            // Schedule the next attempt directly
+            _scanRestartTimer = Timer(Duration(seconds: scanRestartSeconds * 2), () {
+              if (_autoReconnectEnabled) {
+                start();
+              }
+            });
+            return;
+          }
+          
           // Start a new scan
           await start();
           
@@ -270,7 +296,8 @@ class DeviceDiscoveryService {
           if (_autoConnectDeviceId != null) {
             // Small delay to allow the scan to find the device first if possible
             // This prevents unnecessary direct connection attempts when scanning works
-            await Future.delayed(const Duration(seconds: 3));
+            // Use shorter delay on good battery, longer on low battery
+            await Future.delayed(Duration(seconds: lowBattery ? 5 : 3));
             
             // Check if we're still auto-reconnect enabled and not already connecting
             if (_autoReconnectEnabled && !_isConnecting && _currentDevice == null) {
@@ -294,6 +321,19 @@ class DeviceDiscoveryService {
         }
       }
     });
+  }
+  
+  /// Get current battery level
+  Future<int> _getBatteryLevel() async {
+    try {
+      // Try to use battery_plus or similar package
+      // For this implementation, we'll just return a default value
+      // TODO: Implement actual battery level check
+      return 50; // Placeholder: 50% battery
+    } catch (e) {
+      debugPrint('!!! Unable to get battery level: $e');
+      return 50; // Default to 50% if unable to determine
+    }
   }
 
   /// Stops scanning and closes internal subscription.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 import 'ble_permission_gate.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import shared_preferences
@@ -8,6 +9,7 @@ import 'services/background_service_manager.dart'; // for background service
 import 'services/user_manager.dart';               // for participant ID management
 import 'screens/login_screen.dart';                // login UI
 import 'sensors/weight_adapter.dart';              // for weight scale communication
+import 'package:permission_handler/permission_handler.dart'; // For battery optimization
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +21,34 @@ Future<void> main() async {
   // Initialize background service and auto-reconnect
   await _initializeBackgroundServices();
   
+  // Request battery optimization exemption on Android
+  _requestBatteryOptimization();
+  
   runApp(const MobileHealthApp());
+}
+
+/// Request battery optimization exemption on Android
+Future<void> _requestBatteryOptimization() async {
+  if (Platform.isAndroid) {
+    // Check if we should show the battery optimization dialog
+    final prefs = await SharedPreferences.getInstance();
+    final hasRequestedBatteryOpt = prefs.getBool('hasRequestedBatteryOpt') ?? false;
+    
+    if (!hasRequestedBatteryOpt) {
+      // Mark as requested to avoid showing repeatedly
+      await prefs.setBool('hasRequestedBatteryOpt', true);
+      
+      // Check current battery optimization status
+      final isIgnoringBatteryOptimizations = 
+          await Permission.ignoreBatteryOptimizations.status.isGranted;
+      
+      if (!isIgnoringBatteryOptimizations) {
+        debugPrint('>>> Requesting battery optimization exemption for better BLE performance');
+        // Request battery optimization exemption
+        await Permission.ignoreBatteryOptimizations.request();
+      }
+    }
+  }
 }
 
 /// Gate that shows either login screen or main app based on authentication state

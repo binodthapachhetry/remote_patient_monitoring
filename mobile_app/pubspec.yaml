@@ -19,6 +19,7 @@ dependencies:
   connectivity_plus: ^6.1.4        # Network connectivity monitoring
   sqflite: ^2.3.0                  # SQLite database
   intl: ^0.20.2                    # Date formatting
+  battery_plus: ^5.0.1             # Battery level monitoring
 
 dev_dependencies:
   flutter_test:
