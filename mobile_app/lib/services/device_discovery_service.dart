@@ -191,7 +191,7 @@ class DeviceDiscoveryService {
     try {
       // This can throw if we're in a pure background context
       final widgetsBinding = WidgetsBinding.instance;
-      isInBackground = !widgetsBinding.lifecycleState.index.isEven; // Odd indexes are background states
+      isInBackground = !(widgetsBinding.lifecycleState?.index.isEven ?? true); // Odd indexes are background states
       debugPrint('>>> App state detected: ${isInBackground ? "background" : "foreground"}');
     } catch (e) {
       // If we can't determine app state, assume background
@@ -240,13 +240,8 @@ class DeviceDiscoveryService {
           ? const Duration(seconds: 30)  // Shorter scans in background to save battery
           : const Duration(seconds: 45); // Longer scans in foreground for better results
       
-      final scanMode = isInBackground 
-          ? ScanMode.lowPower    // Use lowest power in background
-          : ScanMode.balanced;    // Balance power and scan frequency in foreground
-          
       await FlutterBluePlus.startScan(
         timeout: scanDuration,
-        scanMode: scanMode,
       );
         
       // Set up a timer to restart scanning after the timeout 
