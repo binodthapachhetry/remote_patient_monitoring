@@ -185,6 +185,19 @@ class DeviceDiscoveryService {
     // Reset retry counter on fresh start
     _resetRetryCounter();
     
+    // Check if app is in background to optimize scan parameters
+    bool isInBackground = false;
+    try {
+      // This can throw if we're in a pure background context
+      final widgetsBinding = WidgetsBinding.instance;
+      isInBackground = !widgetsBinding.lifecycleState.index.isEven; // Odd indexes are background states
+      debugPrint('>>> App state detected: ${isInBackground ? "background" : "foreground"}');
+    } catch (e) {
+      // If we can't determine app state, assume background
+      isInBackground = true;
+      debugPrint('>>> Assuming background state due to error: $e');
+    }
+    
     // Forward flutter_blue_plus scan results into our controller.
     _subscription = FlutterBluePlus.scanResults.listen(
       (batch) {
@@ -198,13 +211,15 @@ class DeviceDiscoveryService {
               result.device.remoteId.str == _autoConnectDeviceId) {
             debugPrint('>>> Found auto-connect device: ${result.device.remoteId.str}, RSSI: ${result.rssi} dBm');
             
-            // Only try to connect if signal strength is reasonable
-            // -80 dBm is generally considered a minimum usable signal for BLE
-            if (result.rssi >= -80) {
-              debugPrint('>>> Signal strength sufficient for connection attempt');
+            // Dynamic RSSI threshold based on app state
+            // Use more aggressive threshold when in foreground
+            final rssiThreshold = isInBackground ? -75 : -80;
+            
+            if (result.rssi >= rssiThreshold) {
+              debugPrint('>>> Signal strength sufficient for connection attempt (threshold: $rssiThreshold dBm)');
               _attemptAutoConnect(result.device);
             } else {
-              debugPrint('>>> Signal too weak for reliable connection: ${result.rssi} dBm, waiting for better signal');
+              debugPrint('>>> Signal too weak for reliable connection: ${result.rssi} dBm (threshold: $rssiThreshold dBm)');
               // Don't attempt connection but keep scanning for better signal
             }
           }
@@ -219,16 +234,24 @@ class DeviceDiscoveryService {
     try {
       debugPrint('>>> DeviceDiscoveryService: Calling FlutterBluePlus.startScan()');
         
-      // Use standard scan parameters that are compatible with the installed version
+      // Adjust scan parameters based on app state
+      final scanDuration = isInBackground 
+          ? const Duration(seconds: 30)  // Shorter scans in background to save battery
+          : const Duration(seconds: 45); // Longer scans in foreground for better results
+      
+      final scanMode = isInBackground 
+          ? AndroidScanMode.SCAN_MODE_LOW_POWER    // Use lowest power in background
+          : AndroidScanMode.SCAN_MODE_BALANCED;    // Balance power and scan frequency in foreground
+          
       await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 45),
-        androidScanMode: AndroidScanMode.SCAN_MODE_LOW_POWER, // Better for background
+        timeout: scanDuration,
+        androidScanMode: scanMode,
         allowDuplicates: false, // Reduce battery consumption
       );
         
       // Set up a timer to restart scanning after the timeout 
       // This ensures we maintain continuous scanning capability
-      _setupScanRestartTimer();
+      _setupScanRestartTimer(isInBackground);
     } catch (e) {
       // Handle scan start failures gracefully
       debugPrint('!!! Failed to start scanning: $e');
