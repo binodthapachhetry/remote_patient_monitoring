@@ -59,6 +59,12 @@ Future<void> _initializeBackgroundServices() async {
   final serviceManager = BackgroundServiceManager();
   await serviceManager.initFromPreferences();
   
+  // Ensure background service is active for BLE operations even when locked
+  if (await serviceManager.isStartedOnBoot()) {
+    debugPrint('>>> Auto-starting background service for BLE operations');
+    await serviceManager.startService();
+  }
+  
   // Initialize auto-reconnect if enabled
   if (autoConnectDeviceId != null) {
     final discovery = DeviceDiscoveryService();

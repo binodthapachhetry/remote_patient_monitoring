@@ -9,6 +9,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 
 /**
@@ -36,19 +37,23 @@ class BleBackgroundService : Service() {
             PowerManager.PARTIAL_WAKE_LOCK,
             "BleBackgroundService::WakeLock"
         )
-        wakeLock?.acquire()
+        // Acquire with timeout to prevent battery drain but long enough for BLE operations
+        wakeLock?.acquire(30*60*1000L) // 30 minutes timeout
+        Log.d("BleBackgroundService", "Wake lock acquired with 30-minute timeout")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d("BleBackgroundService", "onStartCommand called")
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Mobile Health Active")
             .setContentText("Monitoring for connected devices")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true) // Make notification persistent
             .build()
 
         startForeground(NOTIFICATION_ID, notification)
-        return START_STICKY
+        return START_REDELIVER_INTENT // Ensures service restarts with same intent
     }
 
     override fun onBind(intent: Intent?): IBinder {

@@ -222,6 +222,8 @@ class DeviceDiscoveryService {
       // Use standard scan parameters that are compatible with the installed version
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: 45),
+        androidScanMode: AndroidScanMode.SCAN_MODE_LOW_POWER, // Better for background
+        allowDuplicates: false, // Reduce battery consumption
       );
         
       // Set up a timer to restart scanning after the timeout 
