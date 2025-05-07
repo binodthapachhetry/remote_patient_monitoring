@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as Math;
 
 import 'package:flutter/foundation.dart'; // Import for debugPrint
+import 'package:flutter/widgets.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -240,13 +241,12 @@ class DeviceDiscoveryService {
           : const Duration(seconds: 45); // Longer scans in foreground for better results
       
       final scanMode = isInBackground 
-          ? AndroidScanMode.SCAN_MODE_LOW_POWER    // Use lowest power in background
-          : AndroidScanMode.SCAN_MODE_BALANCED;    // Balance power and scan frequency in foreground
+          ? ScanMode.lowPower    // Use lowest power in background
+          : ScanMode.balanced;    // Balance power and scan frequency in foreground
           
       await FlutterBluePlus.startScan(
         timeout: scanDuration,
-        androidScanMode: scanMode,
-        allowDuplicates: false, // Reduce battery consumption
+        scanMode: scanMode,
       );
         
       // Set up a timer to restart scanning after the timeout 

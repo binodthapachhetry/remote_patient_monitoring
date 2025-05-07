@@ -80,4 +80,10 @@ class BackgroundServiceManager {
       await startService();
     }
   }
+  
+  /// Check if the service should be started on boot
+  Future<bool> isStartedOnBoot() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('backgroundServiceEnabled') ?? false;
+  }
 }
