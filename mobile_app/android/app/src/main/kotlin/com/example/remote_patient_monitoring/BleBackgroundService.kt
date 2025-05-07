@@ -5,7 +5,9 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Binder
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -62,8 +64,16 @@ class BleBackgroundService : Service() {
         
         // Check battery state and adjust wake lock duration if needed
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-        val batteryLevel = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val batteryManager = getSystemService(Context.BATTERY_SERVICE)
+        val batteryLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            (batteryManager as BatteryManager).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        } else {
+            // Fallback for older Android versions
+            val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level != -1 && scale != -1) (level * 100 / scale) else 50
+        }
         
         // If battery is low (below 20%), reduce wake lock duration
         if (batteryLevel <= 20) {
