@@ -15,6 +15,10 @@ dependencies:
   googleapis: ^13.1.0              # Pub/Sub REST client
   permission_handler: ^11.3.0      # Runtime BLE + location permissions
   shared_preferences: ^2.2.3       # Local key-value storage (or latest version)
+  uuid: ^3.0.7                     # For unique ID generation
+  connectivity_plus: ^5.0.1        # Network connectivity monitoring
+  sqflite: ^2.3.0                  # SQLite database
+  intl: ^0.18.1                    # Date formatting
 
 dev_dependencies:
   flutter_test:
