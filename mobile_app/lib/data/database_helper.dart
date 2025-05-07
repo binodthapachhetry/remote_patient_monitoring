@@ -244,7 +244,6 @@ class DatabaseHelper {
     
     if (errorMessage != null) {
       values['errorMessage'] = errorMessage;
-      values['retryCount'] = Sqflite.sql('retryCount + 1');
     }
     
     await db.update(
@@ -253,6 +252,14 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [batchId],
     );
+    
+    // If error message exists, increment the retry counter separately with raw SQL
+    if (errorMessage != null) {
+      await db.rawUpdate(
+        'UPDATE $tableSyncBatches SET retryCount = retryCount + 1 WHERE id = ?',
+        [batchId]
+      );
+    }
   }
   
   /// Get all pending batches

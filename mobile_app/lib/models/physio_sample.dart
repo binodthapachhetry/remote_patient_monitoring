@@ -1,3 +1,5 @@
+import 'package:remote_patient_monitoring/models/health_measurement.dart';
+
 /// Domain object representing a single physiological measurement that will
 /// eventually be forwarded to Pub/Sub and mapped to HL7v2.
 class PhysioSample {

@@ -74,7 +74,9 @@ class SyncService {
   }
   
   /// Handle connectivity changes
-  Future<void> _onConnectivityChanged(ConnectivityResult result) async {
+  Future<void> _onConnectivityChanged(List<ConnectivityResult> results) async {
+    // In connectivity_plus 6.x, the callback returns a list of results
+    final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
     debugPrint('>>> Connectivity changed: $result');
     
     // If we have connectivity and circuit breaker was open, close it
