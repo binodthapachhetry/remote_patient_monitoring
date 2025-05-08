@@ -15,6 +15,17 @@ class DeviceDetector {
   }) async {
     try {
       debugPrint('>>> Detecting device type for ${device.remoteId.str}');
+      
+      // First check if the device is connected
+      final connectionState = await device.connectionState.first;
+      if (connectionState != BluetoothConnectionState.connected) {
+        debugPrint('>>> Device not connected, connecting first...');
+        await device.connect(autoConnect: false);
+        // Allow a short delay for connection to stabilize
+        await Future.delayed(const Duration(milliseconds: 500));
+        debugPrint('>>> Connected to device, now discovering services');
+      }
+      
       final services = await device.discoverServices();
       
       debugPrint('>>> Device services discovered: ${services.length} services');
