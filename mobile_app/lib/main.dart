@@ -112,10 +112,14 @@ Future<void> _initializeBackgroundServices() async {
           debugPrint('>>> Service UUID: ${service.uuid.toString().toUpperCase()}');
         }
           
+        // Check for standard Weight Scale service (0x181D) or the custom services used by eufy scale
         final hasWeightService = services.any((s) => 
-          s.uuid.toString().toUpperCase().contains('1800'));
+          s.uuid.toString().toUpperCase().contains('181D') || // Standard Weight Scale service
+          s.uuid.toString().toUpperCase().contains('D618D000') || // Custom eufy scale service
+          s.uuid.toString().toUpperCase().contains('4143F6B0')); // Another custom eufy scale service
+          
         final hasBloodPressureService = services.any((s) => 
-          s.uuid.toString().toUpperCase().contains('1810')); // Corrected from '1800' to '1810'
+          s.uuid.toString().toUpperCase().contains('1810')); // Blood Pressure service
           
         debugPrint('>>> Has weight service: $hasWeightService');
         debugPrint('>>> Has blood pressure service: $hasBloodPressureService');
