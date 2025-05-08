@@ -7,7 +7,7 @@ import '../models/physio_sample.dart';
 /// Blood Pressure Service (0x1810)
 class BloodPressureAdapter {
   // Standard BLE UUIDs for Blood Pressure service and characteristics
-  static const String _bloodPressureServiceUuid = '1810';
+  static const String _bloodPressureServiceUuid = '1810'; // Correct UUID for Blood Pressure Service
   static const String _bloodPressureMeasurementCharUuid = '2A35';
   static const String _bloodPressureFeatureCharUuid = '2A49';
   

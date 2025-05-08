@@ -106,12 +106,17 @@ Future<void> _initializeBackgroundServices() async {
       
       // Determine device type based on services and create appropriate adapter
       device.discoverServices().then((services) {
+        // Print all discovered services for debugging
+        debugPrint('>>> Device services discovered: ${services.length} services');
+        for (var service in services) {
+          debugPrint('>>> Service UUID: ${service.uuid.toString().toUpperCase()}');
+        }
+          
         final hasWeightService = services.any((s) => 
           s.uuid.toString().toUpperCase().contains('181D'));
         final hasBloodPressureService = services.any((s) => 
-          s.uuid.toString().toUpperCase().contains('1800'));
-        
-        debugPrint('>>> Device services discovered: ${services.length} services');
+          s.uuid.toString().toUpperCase().contains('1810')); // Corrected from '1800' to '1810'
+          
         debugPrint('>>> Has weight service: $hasWeightService');
         debugPrint('>>> Has blood pressure service: $hasBloodPressureService');
         
