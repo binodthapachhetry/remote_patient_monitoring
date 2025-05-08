@@ -68,13 +68,51 @@ class BloodPressureAdapter extends SensorAdapter {
       
       debugPrint('Found Blood Pressure service: ${_bloodPressureService!.uuid}');
       
-      // Find the BP Measurement characteristic
-      _bpMeasurementChar = _bloodPressureService!.characteristics.firstWhere(
-        (c) => c.uuid.toString().toUpperCase().contains(_bloodPressureMeasurementCharUuid),
-        orElse: () => throw Exception('Blood Pressure Measurement characteristic not found'),
-      );
+      // Log all characteristics for debugging
+      debugPrint('Characteristics in BP service:');
+      for (var c in _bloodPressureService!.characteristics) {
+        debugPrint('  Characteristic: ${c.uuid}, properties: ${_describeProperties(c.properties)}');
+      }
       
-      debugPrint('Found Blood Pressure Measurement characteristic: ${_bpMeasurementChar!.uuid}');
+      // Find the BP Measurement characteristic
+      // First try to find standard BP characteristic
+      try {
+        _bpMeasurementChar = _bloodPressureService!.characteristics.firstWhere(
+          (c) => c.uuid.toString().toUpperCase().contains(_bloodPressureMeasurementCharUuid),
+        );
+        debugPrint('Found standard Blood Pressure Measurement characteristic: ${_bpMeasurementChar!.uuid}');
+      } catch (e) {
+        // If standard characteristic not found, try to find any characteristic with notify property
+        // For custom devices, the main measurement characteristic typically has the notify property
+        debugPrint('Standard BP characteristic not found, looking for alternative characteristics...');
+        final notifyCharacteristics = _bloodPressureService!.characteristics
+            .where((c) => c.properties.notify)
+            .toList();
+        
+        if (notifyCharacteristics.isNotEmpty) {
+          // Use the first characteristic with notify property as our measurement characteristic
+          _bpMeasurementChar = notifyCharacteristics.first;
+          debugPrint('Using alternative characteristic as measurement source: ${_bpMeasurementChar!.uuid}');
+        } else {
+          // If no notify characteristics found, try the first writeable characteristic
+          final writeCharacteristics = _bloodPressureService!.characteristics
+              .where((c) => c.properties.write || c.properties.writeWithoutResponse)
+              .toList();
+          
+          if (writeCharacteristics.isNotEmpty) {
+            _bpMeasurementChar = writeCharacteristics.first;
+            debugPrint('Using writable characteristic: ${_bpMeasurementChar!.uuid}');
+          } else {
+            // Last resort: just use the first characteristic
+            if (_bloodPressureService!.characteristics.isNotEmpty) {
+              _bpMeasurementChar = _bloodPressureService!.characteristics.first;
+              debugPrint('Using first available characteristic: ${_bpMeasurementChar!.uuid}');
+            } else {
+              throw Exception('No usable characteristics found in blood pressure service');
+            }
+          }
+        }
+      }
       
       // Check for Heart Rate service as well (some BP monitors include it)
       try {
@@ -335,6 +373,22 @@ class BloodPressureAdapter extends SensorAdapter {
     }
     
     return exponent >= 0 ? result : 1.0 / result;
+  }
+  
+  /// Helper to describe characteristic properties for logging
+  String _describeProperties(CharacteristicProperties props) {
+    final descriptions = <String>[];
+    if (props.broadcast) descriptions.add('broadcast');
+    if (props.read) descriptions.add('read');
+    if (props.writeWithoutResponse) descriptions.add('writeWithoutResponse');
+    if (props.write) descriptions.add('write');
+    if (props.notify) descriptions.add('notify');
+    if (props.indicate) descriptions.add('indicate');
+    if (props.authenticatedSignedWrites) descriptions.add('authenticatedSignedWrites');
+    if (props.extendedProperties) descriptions.add('extendedProperties');
+    if (props.notifyEncryptionRequired) descriptions.add('notifyEncryptionRequired');
+    if (props.indicateEncryptionRequired) descriptions.add('indicateEncryptionRequired');
+    return descriptions.join(', ');
   }
   
   /// Disconnect from device and clean up resources
