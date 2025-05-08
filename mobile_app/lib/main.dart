@@ -104,71 +104,33 @@ Future<void> _initializeBackgroundServices() async {
       // Handle successful connection
       debugPrint('>>> Auto-reconnect successful to ${device.remoteId.str}');
       
-      // Determine device type based on services and create appropriate adapter
-      device.discoverServices().then((services) {
-        // Print all discovered services for debugging
-        debugPrint('>>> Device services discovered: ${services.length} services');
-        for (var service in services) {
-          debugPrint('>>> Service UUID: ${service.uuid.toString().toUpperCase()}');
-        }
-          
-        // Check for standard Weight Scale service (0x181D) or the custom services used by eufy scale
-        final hasWeightService = services.any((s) => 
-          s.uuid.toString().toUpperCase().contains('181D') || // Standard Weight Scale service
-          s.uuid.toString().toUpperCase().contains('D618D000') || // Custom eufy scale service
-          s.uuid.toString().toUpperCase().contains('4143F6B0')); // Another custom eufy scale service
-          
-        final hasBloodPressureService = services.any((s) => 
-          s.uuid.toString().toUpperCase().contains('636f6d2e')); // Blood Pressure service
-          
-        debugPrint('>>> Has weight service: $hasWeightService');
-        debugPrint('>>> Has blood pressure service: $hasBloodPressureService');
+      // Import device detector
+      import 'utils/device_detector.dart';
         
-        if (hasWeightService) {
-          // Create weight adapter for weight scale
-          final adapter = WeightAdapter(
-            participantId: userManager.participantId ?? 'guest',
-            deviceId: device.remoteId.str,
-          );
-          
-          adapter.bind(device).then((_) {
-            debugPrint('>>> Weight adapter bound after app startup auto-reconnect');
+      // Use the DeviceDetector utility to determine device type and create adapter
+      DeviceDetector.createAdapterForDevice(
+        device: device,
+        participantId: userManager.participantId ?? 'guest',
+      ).then((adapter) {
+        if (adapter != null) {
+          debugPrint('>>> Device adapter created for auto-reconnect: ${adapter.runtimeType}');
             
-            // Listen for weight samples
-            adapter.samples.listen((s) => 
-              debugPrint('Weight measurement received: ${s.value} kg'));
-          }).catchError((e) {
-            debugPrint('!!! Error binding to weight device: $e');
+          // Listen for samples from the device based on type
+          adapter.samples.listen((s) {
+            if (s.metric == PhysioMetric.weightKg) {
+              debugPrint('Weight measurement received: ${s.value} kg');
+            } else if (s.metric == PhysioMetric.bloodPressureSystolicMmHg) {
+              final diastolic = s.metadata?['diastolic'] ?? 0;
+              debugPrint('Blood pressure measurement received: ${s.value}/${diastolic} mmHg');
+            } else if (s.metric == PhysioMetric.heartRate) {
+              debugPrint('Heart rate measurement received: ${s.value} bpm');
+            }
           });
-        } 
-        else if (hasBloodPressureService) {
-          // Create blood pressure adapter for BP monitor
-          final adapter = BloodPressureAdapter(
-            participantId: userManager.participantId ?? 'guest',
-            deviceId: device.remoteId.str,
-          );
-          
-          adapter.bind(device).then((_) {
-            debugPrint('>>> Blood pressure adapter bound after app startup auto-reconnect');
-            
-            // Listen for blood pressure samples
-            adapter.samples.listen((s) {
-              if (s.metric == PhysioMetric.bloodPressureSystolicMmHg) {
-                final diastolic = s.metadata?['diastolic'] ?? 0;
-                debugPrint('Blood pressure measurement received: ${s.value}/${diastolic} mmHg');
-              } else if (s.metric == PhysioMetric.heartRate) {
-                debugPrint('Heart rate measurement received: ${s.value} bpm');
-              }
-            });
-          }).catchError((e) {
-            debugPrint('!!! Error binding to blood pressure device: $e');
-          });
-        }
-        else {
-          debugPrint('!!! Unknown device type, no suitable adapter available');
+        } else {
+          debugPrint('!!! No suitable adapter found for connected device');
         }
       }).catchError((e) {
-        debugPrint('!!! Error discovering services: $e');
+        debugPrint('!!! Error setting up device adapter: $e');
       });
     });
   }

@@ -2,10 +2,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../models/physio_sample.dart';
+import '../models/health_measurement.dart';
+import '../services/sync_service.dart';
+import 'sensor_adapter.dart';
 
 /// Adapter for Bluetooth Blood Pressure Monitors that implement the standard
 /// Blood Pressure Service (0x1810)
-class BloodPressureAdapter {
+class BloodPressureAdapter extends SensorAdapter {
   // Standard BLE UUIDs for Blood Pressure service and characteristics
   static const String _bloodPressureServiceUuid = '1810'; // Correct UUID for Blood Pressure Service
   static const String _bloodPressureMeasurementCharUuid = '2A35';
@@ -15,8 +18,7 @@ class BloodPressureAdapter {
   static const String _heartRateServiceUuid = '180D';
   static const String _heartRateMeasurementCharUuid = '2A37';
   
-  // Participant ID and device tracking
-  final String participantId;
+  // Device ID for tracking
   final String deviceId;
   
   // BLE device and service references
@@ -37,7 +39,7 @@ class BloodPressureAdapter {
   
   /// Creates a new adapter for the specified participant and device
   BloodPressureAdapter({
-    required this.participantId,
+    required super.participantId,
     required this.deviceId,
   });
   
@@ -355,8 +357,10 @@ class BloodPressureAdapter {
     }
   }
   
-  /// Clean up resources
-  void dispose() {
+  /// Clean up resources - implements SensorAdapter.dispose()
+  @override
+  Future<void> dispose() async {
+    await unbind();
     _samplesController.close();
   }
 }
