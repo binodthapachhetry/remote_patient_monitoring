@@ -10,6 +10,7 @@ import 'services/user_manager.dart';               // for participant ID managem
 import 'screens/login_screen.dart';                // login UI
 import 'sensors/weight_adapter.dart';              // for weight scale communication
 import 'sensors/blood_pressure_adapter.dart';      // for blood pressure monitor communication
+import 'models/physio_sample.dart';                // for PhysioMetric enum
 import 'package:permission_handler/permission_handler.dart'; // For battery optimization
 
 Future<void> main() async {

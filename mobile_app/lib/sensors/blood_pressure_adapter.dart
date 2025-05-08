@@ -81,10 +81,14 @@ class BloodPressureAdapter {
           debugPrint('Found Heart Rate service: ${_heartRateService!.uuid}');
           
           // Find the Heart Rate Measurement characteristic
-          _heartRateChar = _heartRateService!.characteristics.firstWhere(
-            (c) => c.uuid.toString().toUpperCase().contains(_heartRateMeasurementCharUuid),
-            orElse: () => null,
-          );
+          // Use where() instead of firstWhere() to safely handle missing characteristic
+          final matchingChars = _heartRateService!.characteristics
+            .where((c) => c.uuid.toString().toUpperCase().contains(_heartRateMeasurementCharUuid))
+            .toList();
+          
+          if (matchingChars.isNotEmpty) {
+            _heartRateChar = matchingChars.first;
+          }
           
           if (_heartRateChar != null) {
             debugPrint('Found Heart Rate Measurement characteristic: ${_heartRateChar!.uuid}');
