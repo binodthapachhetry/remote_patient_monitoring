@@ -147,11 +147,46 @@ class _ScannerPageState extends State<ScannerPage> {
          _adapter!.samples.listen((s) {                                                                                                                     
            if (s.metric == PhysioMetric.weightKg) {                                                                                                         
              debugPrint('Weight: ${s.value} kg');                                                                                                           
+             
+             // Show success notification to user
+             if (mounted) {
+               ScaffoldMessenger.of(context).showSnackBar(
+                 SnackBar(content: Text('Weight measurement received: ${s.value.toStringAsFixed(1)} kg')),
+               );
+             }
            } else if (s.metric == PhysioMetric.bloodPressureSystolicMmHg) {                                                                                 
              final diastolic = s.metadata?['diastolic'] ?? 0;                                                                                               
              debugPrint('Blood pressure: ${s.value}/${diastolic} mmHg');                                                                                    
+             
+             // Show success notification to user for blood pressure
+             if (mounted) {
+               ScaffoldMessenger.of(context).showSnackBar(
+                 SnackBar(
+                   content: Text('Blood pressure: ${s.value.toStringAsFixed(0)}/${diastolic.toString()} mmHg'),
+                   action: SnackBarAction(
+                     label: 'Measure Again',
+                     onPressed: () {
+                       // Try to request another measurement if adapter is blood pressure type
+                       if (_adapter.runtimeType.toString().contains('BloodPressure')) {
+                         (_adapter as dynamic).requestMeasurement();
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           const SnackBar(content: Text('Please start measurement on the device')),
+                         );
+                       }
+                     },
+                   ),
+                 ),
+               );
+             }
            } else if (s.metric == PhysioMetric.heartRate) {                                                                                                 
              debugPrint('Heart rate: ${s.value} bpm');                                                                                                      
+             
+             // Show heart rate notification
+             if (mounted) {
+               ScaffoldMessenger.of(context).showSnackBar(
+                 SnackBar(content: Text('Heart rate: ${s.value.toStringAsFixed(0)} bpm')),
+               );
+             }
            } else {                                                                                                                                         
              debugPrint('Measurement: ${s.metric.name}: ${s.value}');                                                                                       
            }                                                                                                                                                
@@ -181,8 +216,41 @@ class _ScannerPageState extends State<ScannerPage> {
                   _toggleBackgroundService(true);
                 },
               ),
+              duration: const Duration(seconds: 5),
             ),
           );
+          
+          // If device appears to be a blood pressure monitor, show additional instructions
+          if (_adapter.runtimeType.toString().contains('BloodPressure')) {
+            // Delay slightly so messages don't stack too quickly
+            Future.delayed(const Duration(seconds: 1), () {
+              if (mounted) {
+                // Show a dialog with instructions for blood pressure measurement
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Blood Pressure Monitor Connected'),
+                    content: const Text(
+                      '1. Apply the cuff to your arm\n'
+                      '2. Press START on the blood pressure monitor\n'
+                      '3. Wait for the measurement to complete\n\n'
+                      'The reading will appear automatically when the measurement is complete.'
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          // Try to send initialization command when dialog is dismissed
+                          (_adapter as dynamic).requestMeasurement();
+                        },
+                        child: const Text('OK, GOT IT'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            });
+          }
         }
       } catch (e) {
         debugPrint('!!! Attempt $attempt failed: Error connecting/binding to device: $e');
