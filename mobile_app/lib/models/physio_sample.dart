@@ -50,6 +50,10 @@ class PhysioSample {
         return 'heart_rate';
       case PhysioMetric.glucoseMgDl:
         return 'glucose';
+      case PhysioMetric.bloodPressureSystolicMmHg:
+        return 'blood_pressure_systolic';
+      case PhysioMetric.bloodPressureDiastolicMmHg:
+        return 'blood_pressure_diastolic';
       default:
         return metric.name;
     }
@@ -64,6 +68,9 @@ class PhysioSample {
         return 'bpm';
       case PhysioMetric.glucoseMgDl:
         return 'mg/dL';
+      case PhysioMetric.bloodPressureSystolicMmHg:
+      case PhysioMetric.bloodPressureDiastolicMmHg:
+        return 'mmHg';
       default:
         return '';
     }
@@ -71,4 +78,10 @@ class PhysioSample {
 }
 
 /// Enumerates the physiological metrics our MVP supports.
-enum PhysioMetric { heartRate, glucoseMgDl, weightKg }
+enum PhysioMetric { 
+  heartRate, 
+  glucoseMgDl, 
+  weightKg,
+  bloodPressureSystolicMmHg,
+  bloodPressureDiastolicMmHg 
+}
