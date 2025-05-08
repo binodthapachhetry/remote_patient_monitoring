@@ -6,6 +6,9 @@ import '../services/background_service_manager.dart';
 import '../services/user_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../sensors/weight_adapter.dart';
+import '../utils/device_detector.dart';    // For device type detection                                                                                  
+import '../models/physio_sample.dart';     // For PhysioMetric type  
+import '../sensors/sensor_adapter.dart';
 
 class ScannerPage extends StatefulWidget {
   const ScannerPage({super.key, required this.participantId});
@@ -19,7 +22,7 @@ class _ScannerPageState extends State<ScannerPage> {
   final _serviceManager = BackgroundServiceManager();
   StreamSubscription? _sub;
   final List<ScanResult> _results = [];
-  WeightAdapter? _adapter;
+  SensorAdapter? _adapter; 
   bool _backgroundServiceEnabled = false;
   bool _autoReconnectEnabled = false;
   String? _autoConnectDeviceId;
