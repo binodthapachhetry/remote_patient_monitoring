@@ -11,6 +11,8 @@ import 'sensor_adapter.dart';
 class BloodPressureAdapter extends SensorAdapter {
   // Standard BLE UUIDs for Blood Pressure service and characteristics
   static const String _bloodPressureServiceUuid = '1810'; // Correct UUID for Blood Pressure Service
+  // Custom service UUID for non-standard blood pressure monitors
+  static const String _customBloodPressureServiceUuid = '636F6D2E'; // The custom UUID we've detected
   static const String _bloodPressureMeasurementCharUuid = '2A35';
   static const String _bloodPressureFeatureCharUuid = '2A49';
   
@@ -59,7 +61,8 @@ class BloodPressureAdapter extends SensorAdapter {
       
       // Find the Blood Pressure service
       _bloodPressureService = services.firstWhere(
-        (s) => s.uuid.toString().toUpperCase().contains(_bloodPressureServiceUuid),
+        (s) => s.uuid.toString().toUpperCase().contains(_bloodPressureServiceUuid) || 
+               s.uuid.toString().toUpperCase().contains(_customBloodPressureServiceUuid),
         orElse: () => throw Exception('Blood Pressure service not found'),
       );
       
