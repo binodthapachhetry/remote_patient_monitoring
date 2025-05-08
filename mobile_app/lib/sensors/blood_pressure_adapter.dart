@@ -360,7 +360,11 @@ class BloodPressureAdapter extends SensorAdapter {
       }
       
       debugPrint('!!! Could not parse blood pressure data in any known format. Please take a measurement on the device.');
-      
+    } catch (e) {
+      debugPrint('!!! Error in custom format parsing: $e');
+    }
+  }
+  
   /// Create and emit blood pressure measurements from parsed values
   void _emitBloodPressureMeasurements(
     double systolic, 
