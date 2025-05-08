@@ -113,7 +113,7 @@ Future<void> _initializeBackgroundServices() async {
         }
           
         final hasWeightService = services.any((s) => 
-          s.uuid.toString().toUpperCase().contains('181D'));
+          s.uuid.toString().toUpperCase().contains('1800'));
         final hasBloodPressureService = services.any((s) => 
           s.uuid.toString().toUpperCase().contains('1810')); // Corrected from '1800' to '1810'
           
