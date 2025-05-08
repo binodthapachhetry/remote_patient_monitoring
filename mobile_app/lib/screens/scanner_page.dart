@@ -9,7 +9,6 @@ import '../sensors/weight_adapter.dart';
 import '../utils/device_detector.dart';    // For device type detection                                                                                  
 import '../models/physio_sample.dart';     // For PhysioMetric type  
 import '../sensors/sensor_adapter.dart';
-import '../sensors/sensor_adapter.dart';
 
 class ScannerPage extends StatefulWidget {
   const ScannerPage({super.key, required this.participantId});
@@ -121,16 +120,42 @@ class _ScannerPageState extends State<ScannerPage> {
       attempt++;
       debugPrint('>>> Connection attempt $attempt for ${r.device.remoteId.str}');
       try {
-        _adapter = WeightAdapter(
-          participantId: widget.participantId,
-          deviceId: r.device.remoteId.str,
-        );
-        await _adapter!.bind(r.device); // Attempt to connect and bind
+        // _adapter = WeightAdapter(
+        //   participantId: widget.participantId,
+        //   deviceId: r.device.remoteId.str,
+        // );
+        // await _adapter!.bind(r.device); // Attempt to connect and bind
+
+        // Use device detector to determine the right adapter type                                                                                         
+        final adapter = await DeviceDetector.createAdapterForDevice(
+          device: r.device,                                                                                                                                
+          participantId: widget.participantId,                                                                                                             
+          );                                                                                                                                                 
+                                                                                                                                                  
+        // Check if we found a suitable adapter                                                                                                            
+        if (adapter == null) {                                                                                                                             
+          throw Exception('No suitable adapter found for this device type');                                                                               
+        }                                                                                                                                                  
+                                                                                                                                                         
+        // Store the adapter for later use                                                                                                                 
+        _adapter = adapter; 
         connected = true; // Mark as successful if bind completes
 
         // Listen for samples only after successful binding
-        _adapter!.samples.listen((s) => debugPrint('Weight: ${s.value} kg'));
-
+        // _adapter!.samples.listen((s) => debugPrint('Weight: ${s.value} kg'));
+        // Listen for different types of measurements depending on the device                                                                              
+         _adapter!.samples.listen((s) {                                                                                                                     
+           if (s.metric == PhysioMetric.weightKg) {                                                                                                         
+             debugPrint('Weight: ${s.value} kg');                                                                                                           
+           } else if (s.metric == PhysioMetric.bloodPressureSystolicMmHg) {                                                                                 
+             final diastolic = s.metadata?['diastolic'] ?? 0;                                                                                               
+             debugPrint('Blood pressure: ${s.value}/${diastolic} mmHg');                                                                                    
+           } else if (s.metric == PhysioMetric.heartRate) {                                                                                                 
+             debugPrint('Heart rate: ${s.value} bpm');                                                                                                      
+           } else {                                                                                                                                         
+             debugPrint('Measurement: ${s.metric.name}: ${s.value}');                                                                                       
+           }                                                                                                                                                
+         }); 
         // --- Save Device ID for Auto-Connect and enable ---
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('autoConnectDeviceId', r.device.remoteId.str);
