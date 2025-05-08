@@ -9,6 +9,7 @@ import '../sensors/weight_adapter.dart';
 import '../utils/device_detector.dart';    // For device type detection                                                                                  
 import '../models/physio_sample.dart';     // For PhysioMetric type  
 import '../sensors/sensor_adapter.dart';
+import '../sensors/sensor_adapter.dart';
 
 class ScannerPage extends StatefulWidget {
   const ScannerPage({super.key, required this.participantId});
