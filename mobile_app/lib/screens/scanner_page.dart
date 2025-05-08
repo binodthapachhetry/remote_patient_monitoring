@@ -250,18 +250,22 @@ class _ScannerPageState extends State<ScannerPage> {
   
   // Handle successful auto-connection
   void _onAutoConnectSuccess(BluetoothDevice device) {
-    // Create weight adapter and start data collection
-    _adapter = WeightAdapter(
+    // Use DeviceDetector instead of hardcoding WeightAdapter
+    DeviceDetector.createAdapterForDevice(
+      device: device,
       participantId: widget.participantId,
-      deviceId: device.remoteId.str,
-    );
-    
-    _adapter!.bind(device).then((_) {
-      debugPrint('>>> Weight adapter bound after auto-reconnect');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Auto-reconnected to ${device.platformName}')),
-        );
+    ).then((adapter) {
+      if (adapter != null) {
+        _adapter = adapter;
+        debugPrint('>>> Device adapter created for auto-reconnect: ${adapter.runtimeType}');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Auto-reconnected to ${device.platformName}')),
+          );
+        }
+      } else {
+        debugPrint('!!! No suitable adapter found for auto-reconnected device');
       }
     }).catchError((e) {
       debugPrint('!!! Error binding to auto-reconnected device: $e');
