@@ -119,7 +119,7 @@ Future<void> _initializeBackgroundServices() async {
           s.uuid.toString().toUpperCase().contains('4143F6B0')); // Another custom eufy scale service
           
         final hasBloodPressureService = services.any((s) => 
-          s.uuid.toString().toUpperCase().contains('1810')); // Blood Pressure service
+          s.uuid.toString().toUpperCase().contains('636f6d2e')); // Blood Pressure service
           
         debugPrint('>>> Has weight service: $hasWeightService');
         debugPrint('>>> Has blood pressure service: $hasBloodPressureService');
