@@ -108,7 +108,7 @@ Future<void> _initializeBackgroundServices() async {
         final hasWeightService = services.any((s) => 
           s.uuid.toString().toUpperCase().contains('181D'));
         final hasBloodPressureService = services.any((s) => 
-          s.uuid.toString().toUpperCase().contains('1810'));
+          s.uuid.toString().toUpperCase().contains('1800'));
         
         debugPrint('>>> Device services discovered: ${services.length} services');
         debugPrint('>>> Has weight service: $hasWeightService');
