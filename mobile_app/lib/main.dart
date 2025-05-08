@@ -12,6 +12,7 @@ import 'sensors/weight_adapter.dart';              // for weight scale communica
 import 'sensors/blood_pressure_adapter.dart';      // for blood pressure monitor communication
 import 'models/physio_sample.dart';                // for PhysioMetric enum
 import 'package:permission_handler/permission_handler.dart'; // For battery optimization
+import 'utils/device_detector.dart';               // for device type detection
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -104,9 +105,6 @@ Future<void> _initializeBackgroundServices() async {
       // Handle successful connection
       debugPrint('>>> Auto-reconnect successful to ${device.remoteId.str}');
       
-      // Import device detector
-      import 'utils/device_detector.dart';
-        
       // Use the DeviceDetector utility to determine device type and create adapter
       DeviceDetector.createAdapterForDevice(
         device: device,
