@@ -7,7 +7,7 @@ import '../services/sync_service.dart';
 import 'sensor_adapter.dart';
 
 /// Adapter for Bluetooth Blood Pressure Monitors that implement the standard
-/// Blood Pressure Service (0x1810)
+/// Blood Pressure Service (0x1810) or custom implementations with proprietary UUIDs
 class BloodPressureAdapter extends SensorAdapter {
   // Standard BLE UUIDs for Blood Pressure service and characteristics
   static const String _bloodPressureServiceUuid = '1810'; // Correct UUID for Blood Pressure Service
