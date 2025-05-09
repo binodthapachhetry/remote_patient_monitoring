@@ -1031,7 +1031,64 @@ class BloodPressureAdapter extends SensorAdapter {
       List<int> authCommand = [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34];
       await _bpWriteChar!.write(authCommand, withoutResponse: useWithoutResponse);
       debugPrint('>>> Sent authentication command: ${_formatHex(authCommand)}');
+      // Longer delay after authentication - companion app waits approximately 1.5s
       await Future.delayed(const Duration(milliseconds: 1500));
+      
+      // === KN-550BT/BP550BT SPECIFIC SEQUENCE BASED ON COMPANION APP LOGS ===
+      debugPrint('>>> Executing KN-550BT/BP550BT specific command sequence from companion app');
+      
+      // Key command sequence seen in iHealth MyVitalsPro app logs:
+      // The companion app first authenticates then runs this specific sequence
+      List<List<int>> bp550btSequence = [
+        // Sequence 1: Authentication again to ensure the device is ready (app does this repeatedly)
+        [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34],
+        
+        // Sequence 2: This appears to be the key memory mode activation command
+        // Based on companion app logs, this command with these exact parameters is critical
+        [0x53, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00],
+        
+        // Sequence 3: Mode activation command - likely initiates data transfer
+        [0x51, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+        
+        // Sequence 4: Additional data access command
+        [0xA0, 0x38, 0x00, 0x01, 0xA1, 0x00, 0x00],
+      ];
+      
+      // Execute the BP550BT sequence with precise timing as seen in the companion app
+      for (int i = 0; i < bp550btSequence.length; i++) {
+        final command = bp550btSequence[i];
+        try {
+          await _bpWriteChar!.write(command, withoutResponse: useWithoutResponse);
+          debugPrint('>>> Sent BP550BT command ${i+1}/${bp550btSequence.length}: ${_formatHex(command)}');
+          
+          // Companion app shows ~1200ms delay between commands
+          await Future.delayed(const Duration(milliseconds: 1200));
+        } catch (e) {
+          debugPrint('!!! Error sending BP550BT command: $e');
+        }
+      }
+      
+      // Allow time for device to respond with data (companion app shows waiting time here)
+      await Future.delayed(const Duration(milliseconds: 2000));
+      
+      // Try a second scan cycle - companion app does this approximately 12 seconds after first scan
+      debugPrint('>>> BP550BT: Starting second scan cycle as seen in companion app');
+      
+      // Second authentication pass
+      await _bpWriteChar!.write(authCommand, withoutResponse: useWithoutResponse);
+      await Future.delayed(const Duration(milliseconds: 1200));
+      
+      // Send key data retrieval command during second scan - 0x53 with parameter 0x02 seems critical
+      List<int> keyDataCommand = [0x53, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00];
+      await _bpWriteChar!.write(keyDataCommand, withoutResponse: useWithoutResponse);
+      await Future.delayed(const Duration(milliseconds: 1200));
+      
+      // Final data activation command
+      List<int> finalActivation = [0xA0, 0x38, 0x00, 0x01, 0xA1, 0x00, 0x00];
+      await _bpWriteChar!.write(finalActivation, withoutResponse: useWithoutResponse);
+      
+      // Wait for data transfer completion
+      await Future.delayed(const Duration(milliseconds: 2000));
       
       // 2. Try various data download commands based on common protocol patterns
       
