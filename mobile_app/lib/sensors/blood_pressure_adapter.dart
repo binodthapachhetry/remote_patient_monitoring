@@ -13,8 +13,13 @@ class BloodPressureAdapter extends SensorAdapter {
   static const String _bloodPressureServiceUuid = '1810'; // Correct UUID for Blood Pressure Service
   // Custom service UUID for non-standard blood pressure monitors
   static const String _customBloodPressureServiceUuid = '636F6D2E'; // The custom UUID we've detected
+  // static const String _customBloodPressureServiceUuid = '1800'; // The custom UUID we've detected
+
+  // static const String _bloodPressureMeasurementCharUuid = '2a00'; // For notifications
+
   static const String _bloodPressureMeasurementCharUuid = '7365642'; // For notifications
-  static const String _bloodPressureWriteCharUuid = '7265642';      // For sending commands
+  static const String _bloodPressureWriteCharUuid = '7265632';      // For sending commands
+
   static const String _bloodPressureFeatureCharUuid = '2A49';
   
   // Optional Heart Rate service and characteristic
