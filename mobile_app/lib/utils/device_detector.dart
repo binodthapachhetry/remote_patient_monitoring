@@ -60,13 +60,18 @@ class DeviceDetector {
         
       } else if (hasBloodPressureService) {
         // Create blood pressure adapter for BP monitor
+        debugPrint('>>> Creating blood pressure adapter for device: ${device.remoteId.str}');
         final adapter = BloodPressureAdapter(
           participantId: participantId,
           deviceId: device.remoteId.str,
         );
-        
+      
+        debugPrint('>>> Binding blood pressure adapter to device...');
         await adapter.bind(device);
         debugPrint('>>> Blood pressure adapter bound successfully');
+      
+        // Additional debug info for BP monitor
+        debugPrint('>>> Blood pressure monitor ready - adapter created and bound');
         return adapter;
         
       } else {

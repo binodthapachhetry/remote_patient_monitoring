@@ -164,7 +164,7 @@ class BloodPressureAdapter extends SensorAdapter {
     try {
       // Enable notifications for the BP Measurement characteristic
       await _bpMeasurementChar!.setNotifyValue(true);
-      debugPrint('Subscribed to Blood Pressure notifications');
+      debugPrint('>>> Subscribed to Blood Pressure notifications');
       
       // Listen for measurements
       _bpMeasurementChar!.onValueReceived.listen((data) {
@@ -180,9 +180,15 @@ class BloodPressureAdapter extends SensorAdapter {
         }
       });
       
+      // Explicitly log before sending initialization commands
+      debugPrint('>>> About to send initialization commands to blood pressure device');
+      
       // Send initialization command to the device if the characteristic is writable
       if (_bpMeasurementChar!.properties.write || _bpMeasurementChar!.properties.writeWithoutResponse) {
-        _sendInitializationCommand();
+        await _sendInitializationCommand();
+        debugPrint('>>> Initialization commands sent successfully');
+      } else {
+        debugPrint('!!! Blood pressure characteristic is not writable - cannot send initialization commands');
       }
     } catch (e) {
       debugPrint('Error subscribing to blood pressure: $e');
@@ -218,19 +224,33 @@ class BloodPressureAdapter extends SensorAdapter {
       debugPrint('>>> Sending initialization command to blood pressure device');
       
       // Try different initialization commands that might work with this device
-      // Command 1: Simple activation byte
+      // Original commands
       List<int> command1 = [0x01];
       await _bpMeasurementChar!.write(command1, withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
-      debugPrint('>>> Sent command: ${command1.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      debugPrint('>>> Sent command 1: ${command1.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
       await Future.delayed(const Duration(milliseconds: 500));
       
       // Command 2: Start measurement command (common pattern)
       List<int> command2 = [0xAA, 0x01, 0x02, 0x03, 0x04];
       await _bpMeasurementChar!.write(command2, withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
-      debugPrint('>>> Sent command: ${command2.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      debugPrint('>>> Sent command 2: ${command2.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
-      debugPrint('>>> Initialization commands sent. Please start a measurement on the device.');
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // KN-550BT specific commands (common for Bluetooth BP monitors with this chipset)
+      List<int> command3 = [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34];
+      await _bpMeasurementChar!.write(command3, withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
+      debugPrint('>>> Sent command 3 (KN-550BT specific): ${command3.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Another common command pattern for this family of devices
+      List<int> command4 = [0x53, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00];
+      await _bpMeasurementChar!.write(command4, withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
+      debugPrint('>>> Sent command 4: ${command4.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      
+      debugPrint('>>> All initialization commands sent. Please start a measurement on the device.');
     } catch (e) {
       debugPrint('!!! Error sending initialization command: $e');
     }
@@ -243,6 +263,11 @@ class BloodPressureAdapter extends SensorAdapter {
     debugPrint('>>> Processing BP data: ${data.length} bytes: $hexData');
     
     if (data.isEmpty) return;
+    
+    // For debugging purposes, dump the raw bytes with their decimal values
+    final debugValues = data.asMap().entries.map((e) => 
+      'byte ${e.key}: 0x${e.value.toRadixString(16).padLeft(2, '0')} (${e.value})').join(', ');
+    debugPrint('>>> Detailed data breakdown: $debugValues');
     
     // Try to detect if this is a standard BLE profile or a custom format
     if (data.length >= 7) {
@@ -579,8 +604,13 @@ class BloodPressureAdapter extends SensorAdapter {
   
   /// Manually send a command to the device to request a measurement
   Future<void> requestMeasurement() async {
-    if (_bpMeasurementChar == null || !_bpMeasurementChar!.properties.write) {
-      debugPrint('!!! Cannot request measurement: No writable characteristic available');
+    if (_bpMeasurementChar == null) {
+      debugPrint('!!! Cannot request measurement: No characteristic available');
+      return;
+    }
+    
+    if (!(_bpMeasurementChar!.properties.write || _bpMeasurementChar!.properties.writeWithoutResponse)) {
+      debugPrint('!!! Cannot request measurement: Characteristic is not writable (properties: ${_describeProperties(_bpMeasurementChar!.properties)})');
       return;
     }
     
@@ -593,17 +623,32 @@ class BloodPressureAdapter extends SensorAdapter {
         [0x02],                // Alternate command
         [0xAA, 0x01],          // Start sequence for some devices
         [0xFE, 0x01, 0x00],    // 3-byte command sequence
-        [0xAA, 0x12, 0x34, 0x56] // More complex sequence
+        [0xAA, 0x12, 0x34, 0x56], // More complex sequence
+        // KN-550BT specific commands
+        [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34], // KN-550BT activation command
+        [0x53, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00], // Common BP monitor command
+        [0x51, 0x26, 0x00, 0x00, 0x00, 0x00, 0x00], // Another BP monitor command
+        [0xA5, 0x01, 0x01, 0xA7] // Short command sequence used by some models
       ];
       
-      for (var command in commandsToTry) {
-        await _bpMeasurementChar!.write(command, 
-          withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
-        debugPrint('>>> Sent command: ${command.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      for (var i = 0; i < commandsToTry.length; i++) {
+        final command = commandsToTry[i];
+        final withoutResponse = _bpMeasurementChar!.properties.writeWithoutResponse;
+        
+        debugPrint('>>> Trying command ${i+1}/${commandsToTry.length}: ${command.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+        
+        try {
+          await _bpMeasurementChar!.write(command, withoutResponse: withoutResponse);
+          debugPrint('>>> Command ${i+1} sent successfully');
+        } catch (e) {
+          debugPrint('!!! Error sending command ${i+1}: $e');
+        }
+        
+        // Wait between commands
         await Future.delayed(const Duration(milliseconds: 300));
       }
       
-      debugPrint('>>> Measurement request commands sent. Please also press START on the physical device.');
+      debugPrint('>>> All measurement request commands sent. Please also press START on the physical device.');
     } catch (e) {
       debugPrint('!!! Error requesting measurement: $e');
     }

@@ -168,10 +168,22 @@ class _ScannerPageState extends State<ScannerPage> {
                      onPressed: () {
                        // Try to request another measurement if adapter is blood pressure type
                        if (_adapter.runtimeType.toString().contains('BloodPressure')) {
-                         (_adapter as dynamic).requestMeasurement();
                          ScaffoldMessenger.of(context).showSnackBar(
-                           const SnackBar(content: Text('Please start measurement on the device')),
+                           const SnackBar(content: Text('Sending command to blood pressure monitor...')),
                          );
+                         (_adapter as dynamic).requestMeasurement();
+                    
+                         // Set a short timer to show a followup message
+                         Future.delayed(const Duration(seconds: 2), () {
+                           if (mounted) {
+                             ScaffoldMessenger.of(context).showSnackBar(
+                               const SnackBar(
+                                 content: Text('Please also press START on the blood pressure monitor'),
+                                 duration: Duration(seconds: 5),
+                               ),
+                             );
+                           }
+                         });
                        }
                      },
                    ),
@@ -232,18 +244,34 @@ class _ScannerPageState extends State<ScannerPage> {
                     title: const Text('Blood Pressure Monitor Connected'),
                     content: const Text(
                       '1. Apply the cuff to your arm\n'
-                      '2. Press START on the blood pressure monitor\n'
-                      '3. Wait for the measurement to complete\n\n'
+                      '2. Press "Send Commands" below to initialize the device\n'
+                      '3. Press START on the blood pressure monitor\n'
+                      '4. Wait for the measurement to complete\n\n'
                       'The reading will appear automatically when the measurement is complete.'
                     ),
                     actions: [
                       TextButton(
                         onPressed: () {
-                          Navigator.pop(context);
-                          // Try to send initialization command when dialog is dismissed
+                          // Try to send initialization command first
                           (_adapter as dynamic).requestMeasurement();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Sending commands to blood pressure monitor...'),
+                              duration: Duration(seconds: 3),
+                            ),
+                          );
+                          // Delay dialog dismissal to show the snackbar
+                          Future.delayed(const Duration(milliseconds: 500), () {
+                            Navigator.pop(context);
+                          });
                         },
-                        child: const Text('OK, GOT IT'),
+                        child: const Text('SEND COMMANDS'),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        child: const Text('SKIP'),
                       ),
                     ],
                   ),
