@@ -434,6 +434,35 @@ class BloodPressureAdapter extends SensorAdapter {
     debugPrint('>>> Attempting custom format parsing for KN-550BT device');
     
     try {
+      // KN-550BT specific format detection - first priority
+      // Most reliable pattern observed in logs: first byte = systolic, second byte = diastolic
+      if (data.length >= 2 && data[0] == 0xA0) {
+        final systolic = data[0].toDouble(); // Byte 0 (0xA0 = 160)
+        final diastolic = data[1].toDouble(); // Byte 1 (varies)
+        
+        // Validate readings are in reasonable BP range
+        if (systolic > 80 && systolic < 200 && 
+            diastolic > 0 && diastolic < 120) {
+          debugPrint('>>> KN-550BT direct format detected - Blood Pressure: $systolic/$diastolic mmHg');
+          
+          // Use standard formula to estimate mean arterial pressure
+          final meanArterial = (systolic + 2 * diastolic) / 3;
+          
+          // Try to extract pulse rate if present (often in byte 10 for this device)
+          double? pulseRate;
+          if (data.length > 10) {
+            final possiblePulse = data[10].toDouble();
+            if (possiblePulse > 40 && possiblePulse < 160) {
+              pulseRate = possiblePulse;
+            }
+          }
+          
+          _emitBloodPressureMeasurements(
+            systolic, diastolic, meanArterial, 'mmHg', data, pulseRate: pulseRate);
+          return;
+        }
+      }
+
       // KN-550BT specific data format
       // Based on the observed packet pattern from the logs
       if (data.length >= 59 && data[0] == 0xA0) {
