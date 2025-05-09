@@ -178,8 +178,8 @@ class _ScannerPageState extends State<ScannerPage> {
                            if (mounted) {
                              ScaffoldMessenger.of(context).showSnackBar(
                                const SnackBar(
-                                 content: Text('If no response: 1) Make sure cuff is properly placed, 2) Press START on the device'),
-                                 duration: Duration(seconds: 8),
+                                 content: Text('IMPORTANT: You MUST press the START button on the physical device after commands are sent. Make sure cuff is properly applied at heart level.'),
+                                 duration: Duration(seconds: 10),
                                ),
                              );
                            }
@@ -243,11 +243,12 @@ class _ScannerPageState extends State<ScannerPage> {
                   builder: (context) => AlertDialog(
                     title: const Text('Blood Pressure Monitor Connected'),
                     content: const Text(
-                      '1. Apply the cuff to your arm\n'
+                      '1. Apply the cuff to your arm properly (cuff must be placed at heart level)\n'
                       '2. Press "Send Commands" below to initialize the device\n'
-                      '3. Press START on the blood pressure monitor\n'
-                      '4. Wait for the measurement to complete\n\n'
-                      'The reading will appear automatically when the measurement is complete.'
+                      '3. IMPORTANT: You MUST press START on the physical blood pressure monitor\n'
+                      '4. Hold your arm still and wait for the measurement to complete\n\n'
+                      'The reading will appear automatically when the measurement is complete.\n\n'
+                      'Note: The commands only prepare the device but do not start the actual measurement.'
                     ),
                     actions: [
                       TextButton(
@@ -256,8 +257,8 @@ class _ScannerPageState extends State<ScannerPage> {
                           (_adapter as dynamic).requestMeasurement();
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Sending commands to blood pressure monitor...'),
-                              duration: Duration(seconds: 3),
+                              content: Text('Sending commands to blood pressure monitor. After commands are sent, you MUST press START on the device.'),
+                              duration: Duration(seconds: 5),
                             ),
                           );
                           // Delay dialog dismissal to show the snackbar

@@ -324,28 +324,35 @@ class BloodPressureAdapter extends SensorAdapter {
       await _bpWriteChar!.write(command1, withoutResponse: useWithoutResponse);
       debugPrint('>>> Sent command 1 (KN-550BT auth): ${command1.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 1000));
       
       // Second command in the sequence for this device family
       List<int> command2 = [0x53, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00];
       await _bpWriteChar!.write(command2, withoutResponse: useWithoutResponse);
       debugPrint('>>> Sent command 2 (KN-550BT setup): ${command2.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 1000));
+      
+      // KN-550BT specific start measurement command (critical for device activation)
+      List<int> command3 = [0x51, 0x26, 0x00, 0x00, 0x00, 0x00, 0x00];
+      await _bpWriteChar!.write(command3, withoutResponse: useWithoutResponse);
+      debugPrint('>>> Sent command 3 (KN-550BT start): ${command3.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      
+      await Future.delayed(const Duration(milliseconds: 1000));
       
       // Common command for BP monitors to start readings
-      List<int> command3 = [0xAA, 0x01, 0x02, 0x03, 0x04];
-      await _bpWriteChar!.write(command3, withoutResponse: useWithoutResponse);
-      debugPrint('>>> Sent command 3 (start measurement): ${command3.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      List<int> command4 = [0xAA, 0x01, 0x02, 0x03, 0x04];
+      await _bpWriteChar!.write(command4, withoutResponse: useWithoutResponse);
+      debugPrint('>>> Sent command 4 (start measurement): ${command4.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 1000));
       
       // Simple command that works with some devices
-      List<int> command4 = [0x01];
-      await _bpWriteChar!.write(command4, withoutResponse: useWithoutResponse);
-      debugPrint('>>> Sent command 4 (simple trigger): ${command4.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      List<int> command5 = [0x01];
+      await _bpWriteChar!.write(command5, withoutResponse: useWithoutResponse);
+      debugPrint('>>> Sent command 5 (simple trigger): ${command5.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
-      debugPrint('>>> All initialization commands sent. Please start a measurement on the device.');
+      debugPrint('>>> All initialization commands sent. IMPORTANT: You must now press the START button on the blood pressure device to begin measurement.');
     } catch (e) {
       debugPrint('!!! Error sending initialization command: $e');
     }
@@ -849,10 +856,10 @@ class BloodPressureAdapter extends SensorAdapter {
         // Wait between commands - longer for the critical authentication sequence
         if (i < 3) {
           // Longer delay for the KN-550BT specific sequence
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 1000));
         } else {
           // Shorter delay for fallback commands
-          await Future.delayed(const Duration(milliseconds: 300));
+          await Future.delayed(const Duration(milliseconds: 500));
         }
       }
       
