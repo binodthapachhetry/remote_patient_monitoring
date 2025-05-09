@@ -171,6 +171,12 @@ class BloodPressureAdapter extends SensorAdapter {
         final hexData = data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
         debugPrint('>>> RAW BP DATA: [${data.length} bytes] $hexData');
         
+        // Log ALL incoming data without filtering
+        _logRawDataPacket(data);
+        
+        // Create a simple measurement just based on the raw data
+        _createRawDataMeasurement(data);
+        
         // Always try to parse the data, even if it fails
         try {
           _handleBpMeasurement(data);
@@ -472,6 +478,84 @@ class BloodPressureAdapter extends SensorAdapter {
     // Store in sync service
     SyncService().storeMeasurement(measurement);
     debugPrint('>>> Blood pressure measurement stored for sync: $systolic/$diastolic mmHg');
+  }
+  
+  /// Log and analyze a raw data packet without filtering
+  void _logRawDataPacket(List<int> data) {
+    final hexData = data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+    final asciiData = data.map((b) => _isPrintable(b) ? String.fromCharCode(b) : '.').join('');
+    
+    debugPrint('------------------------------------------------');
+    debugPrint('RAW PACKET: ${DateTime.now().toIso8601String()}');
+    debugPrint('Length: ${data.length} bytes');
+    debugPrint('Hex: $hexData');
+    debugPrint('ASCII: $asciiData');
+    
+    // Log each byte separately with multiple interpretations
+    if (data.length > 0) {
+      debugPrint('BYTE ANALYSIS:');
+      for (int i = 0; i < data.length; i++) {
+        final byte = data[i];
+        debugPrint('Byte $i: $byte (0x${byte.toRadixString(16).padLeft(2, '0')})' + 
+                  ' | ASCII: ${_isPrintable(byte) ? String.fromCharCode(byte) : '.'}' +
+                  ' | Binary: ${byte.toRadixString(2).padLeft(8, '0')}');
+      }
+    }
+    
+    // Try to identify potential patterns
+    _identifyPotentialPatterns(data);
+    debugPrint('------------------------------------------------');
+  }
+  
+  /// Check if a byte represents a printable ASCII character
+  bool _isPrintable(int byte) {
+    return byte >= 32 && byte <= 126;
+  }
+  
+  /// Try to identify potential patterns in the data
+  void _identifyPotentialPatterns(List<int> data) {
+    // Look for values that might be blood pressure readings
+    if (data.length >= 2) {
+      // Try as direct values
+      debugPrint('POTENTIAL BP VALUES:');
+      debugPrint('If direct values: ${data[0]}/${data[1]} mmHg');
+      
+      // Try as uint16 little-endian
+      if (data.length >= 4) {
+        final value1 = data[0] | (data[1] << 8);
+        final value2 = data[2] | (data[3] << 8);
+        debugPrint('If uint16 (LE): $value1/$value2 mmHg');
+        
+        // Try with scaling factors
+        debugPrint('If uint16 (LE) ÷ 10: ${value1/10}/${value2/10} mmHg');
+      }
+    }
+  }
+  
+  /// Create a measurement from raw data for testing
+  void _createRawDataMeasurement(List<int> data) {
+    if (data.isEmpty) return;
+    
+    // Use first byte as an example measurement value
+    // In a real implementation, we'd use actual BP values
+    final timestamp = DateTime.now();
+    final hexData = data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+    
+    final rawSample = PhysioSample(
+      participantId: participantId,
+      deviceId: deviceId,
+      metric: PhysioMetric.bloodPressureSystolicMmHg,
+      value: data[0].toDouble(), // Just to have some value
+      timestamp: timestamp,
+      metadata: {
+        'rawData': hexData,
+        'originalLength': data.length,
+        'isTestData': true,
+      },
+    );
+    
+    _samplesController.add(rawSample);
+    debugPrint('>>> Created raw test BP sample with first byte value: ${data[0]}');
   }
   
   /// Parse heart rate measurement data per BLE specification
