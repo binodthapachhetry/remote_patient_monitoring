@@ -72,6 +72,12 @@ class DeviceDetector {
       
         // Additional debug info for BP monitor
         debugPrint('>>> Blood pressure monitor ready - adapter created and bound');
+        
+        // Automatically trigger data download to retrieve stored measurements
+        debugPrint('>>> Automatically requesting stored readings from blood pressure device');
+        await Future.delayed(const Duration(milliseconds: 500)); // Short delay for stability
+        await adapter.requestDataDownload();
+        
         return adapter;
         
       } else {
