@@ -70,6 +70,35 @@ class BloodPressureAdapter extends SensorAdapter {
       
       debugPrint('Found Blood Pressure service: ${_bloodPressureService!.uuid}');
       
+      // Enhanced logging of all services and characteristics
+      debugPrint('======= DEVICE PROFILE: ${device.remoteId.str} =======');
+      debugPrint('DEVICE NAME: ${device.platformName}');
+      
+      debugPrint('ALL SERVICES:');
+      for (var service in services) {
+        debugPrint('----- SERVICE: ${service.uuid} -----');
+        
+        debugPrint('CHARACTERISTICS:');
+        for (var char in service.characteristics) {
+          final props = _describeProperties(char.properties);
+          final readable = char.properties.read ? '✅' : '❌';
+          final writable = (char.properties.write || char.properties.writeWithoutResponse) ? '✅' : '❌';
+          final notifiable = char.properties.notify ? '✅' : '❌';
+          
+          debugPrint(' → ${char.uuid}');
+          debugPrint('   Read: $readable | Write: $writable | Notify: $notifiable');
+          debugPrint('   Properties: $props');
+          
+          // For each notify characteristic, set up a data listener 
+          // regardless of which service it's in
+          if (char.properties.notify) {
+            _setupRawDataListener(char);
+          }
+        }
+        debugPrint('------------------------------------------');
+      }
+      debugPrint('=================================================');
+      
       // Log all characteristics for debugging
       debugPrint('Characteristics in BP service:');
       for (var c in _bloodPressureService!.characteristics) {
@@ -226,6 +255,56 @@ class BloodPressureAdapter extends SensorAdapter {
     } catch (e) {
       debugPrint('Error subscribing to heart rate: $e');
       // Continue without heart rate - it's optional
+    }
+  }
+  
+  /// Set up a raw data listener for any characteristic with notify property
+  Future<void> _setupRawDataListener(BluetoothCharacteristic characteristic) async {
+    try {
+      await characteristic.setNotifyValue(true);
+      debugPrint('🔔 Set up notifications for: ${characteristic.uuid}');
+      
+      characteristic.onValueReceived.listen((data) {
+        if (data.isNotEmpty) {
+          final hexData = data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+          debugPrint('📡 RAW DATA FROM ${characteristic.uuid}: $hexData');
+          
+          // Try to interpret this data in multiple ways
+          _interpretRawData(characteristic.uuid.toString(), data);
+        }
+      });
+    } catch (e) {
+      debugPrint('⚠️ Error setting up raw listener for ${characteristic.uuid}: $e');
+    }
+  }
+  
+  /// Try to interpret raw data in multiple ways to identify patterns
+  void _interpretRawData(String sourceUuid, List<int> data) {
+    final asciiValues = data.map((b) => _isPrintable(b) ? String.fromCharCode(b) : '.').join('');
+    
+    debugPrint('🔍 DATA ANALYSIS FROM $sourceUuid:');
+    debugPrint(' → Length: ${data.length} bytes');
+    debugPrint(' → ASCII: $asciiValues');
+    
+    // Try to interpret as blood pressure values
+    if (data.length >= 2) {
+      // Try direct integer values
+      debugPrint(' → If direct values: ${data[0]}/${data[1]} mmHg');
+      
+      // Try as uint16 little-endian values
+      if (data.length >= 4) {
+        final val1 = data[0] | (data[1] << 8);
+        final val2 = data[2] | (data[3] << 8);
+        debugPrint(' → If uint16 (LE): $val1/$val2');
+        
+        // Try with scaling
+        debugPrint(' → If uint16 (LE) ÷ 10: ${val1/10}/${val2/10}');
+      }
+    }
+    
+    // Try to interpret as heart rate
+    if (data.length >= 2) {
+      debugPrint(' → If heart rate: ${data[1]}');
     }
   }
   
