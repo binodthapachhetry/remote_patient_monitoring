@@ -6,6 +6,7 @@ import '../services/background_service_manager.dart';
 import '../services/user_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../sensors/weight_adapter.dart';
+import '../sensors/blood_pressure_adapter.dart';
 import '../utils/device_detector.dart';    // For device type detection                                                                                  
 import '../models/physio_sample.dart';     // For PhysioMetric type  
 import '../sensors/sensor_adapter.dart';
@@ -441,6 +442,40 @@ class _ScannerPageState extends State<ScannerPage> {
                     value: _autoReconnectEnabled,
                     onChanged: _autoConnectDeviceId != null ? _toggleAutoReconnect : null,
                   ),
+                  // Add control buttons for connected device
+                  if (_adapter != null) 
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Device Controls',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              // Blood pressure specific controls
+                              if (_adapter is BloodPressureAdapter)
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    (_adapter as BloodPressureAdapter).requestDataDownload();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Requesting stored readings from device...'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.download),
+                                  label: const Text('Get Stored Readings'),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   if (_autoReconnectEnabled && _autoConnectDeviceId != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),

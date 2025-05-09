@@ -681,6 +681,45 @@ class BloodPressureAdapter extends SensorAdapter {
     debugPrint('Hex: $hexData');
     debugPrint('ASCII: $asciiData');
     
+    // Extract command code (first byte) for protocol analysis
+    if (data.isNotEmpty) {
+      final commandCode = data[0];
+      debugPrint('COMMAND/RESPONSE CODE: 0x${commandCode.toRadixString(16).padLeft(2, '0')}');
+      
+      // Look for common response patterns
+      switch (commandCode) {
+        case 0xA0:
+          debugPrint('ANALYSIS: This appears to be a data record packet');
+          break;
+        case 0xA1:
+          debugPrint('ANALYSIS: This appears to be a status response');
+          break;
+        case 0x51:
+        case 0x52:
+        case 0x53:
+          debugPrint('ANALYSIS: This appears to be a command acknowledgment');
+          break;
+        case 0xAB:
+          debugPrint('ANALYSIS: This appears to be an authentication response');
+          break;
+        default:
+          debugPrint('ANALYSIS: Unknown packet type');
+      }
+      
+      // Try to extract any embedded device identifiers
+      if (data.length >= 10) {
+        // Look for MAC address pattern (common in BLE protocols)
+        for (int i = 0; i < data.length - 5; i++) {
+          final segment = data.sublist(i, i + 6);
+          final macHex = segment.map((b) => b.toRadixString(16).padLeft(2, '0')).join(':');
+          if (_looksLikeMacAddress(macHex)) {
+            debugPrint('POTENTIAL MAC ADDRESS found at offset $i: $macHex');
+            break;
+          }
+        }
+      }
+    }
+    
     // Log each byte separately with multiple interpretations
     if (data.length > 0) {
       debugPrint('BYTE ANALYSIS:');
@@ -695,6 +734,13 @@ class BloodPressureAdapter extends SensorAdapter {
     // Try to identify potential patterns
     _identifyPotentialPatterns(data);
     debugPrint('------------------------------------------------');
+  }
+  
+  /// Check if a string looks like a MAC address
+  bool _looksLikeMacAddress(String text) {
+    // Simple check for MAC address format (XX:XX:XX:XX:XX:XX with valid hex chars)
+    final RegExp macRegex = RegExp(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$');
+    return macRegex.hasMatch(text);
   }
   
   /// Check if a byte represents a printable ASCII character
@@ -939,6 +985,115 @@ class BloodPressureAdapter extends SensorAdapter {
     } catch (e) {
       debugPrint('!!! Error requesting measurement: $e');
     }
+  }
+  
+  /// Request download of stored readings from the device
+  Future<void> requestDataDownload() async {
+    if (_bpWriteChar == null) {
+      debugPrint('!!! Cannot request data download: No write characteristic available');
+      return;
+    }
+    
+    try {
+      debugPrint('>>> Attempting to download stored readings from blood pressure device');
+      final useWithoutResponse = _bpWriteChar!.properties.writeWithoutResponse;
+      
+      // 1. First authenticate with the device
+      List<int> authCommand = [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34];
+      await _bpWriteChar!.write(authCommand, withoutResponse: useWithoutResponse);
+      debugPrint('>>> Sent authentication command: ${_formatHex(authCommand)}');
+      await Future.delayed(const Duration(milliseconds: 1500));
+      
+      // 2. Try various data download commands based on common protocol patterns
+      
+      // List of potential data download command patterns to try
+      List<List<List<int>>> commandSequences = [
+        // Sequence A: Based on observed successful auth + common download patterns
+        [
+          [0xA6, 0x01, 0x00], // Common "get data count" command
+          [0xA7, 0x01, 0x00], // Start data transfer
+          [0xA8, 0x00, 0x00]  // Get all records
+        ],
+        
+        // Sequence B: Using command 0xA0 to match the response pattern we see (0xA0...)
+        [
+          [0xA0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // Request using same header as response
+          [0xA0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00], // Variation with index 1
+          [0xA0, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00]  // Variation with 0xFF (often means "all records")
+        ],
+        
+        // Sequence C: Using the observed 0x51/0x53 pattern plus standard download commands
+        [
+          [0x53, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00], // Modified setup command
+          [0x51, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00], // Modified start command
+          [0x52, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]  // Potential download command (0x52 follows pattern)
+        ],
+        
+        // Sequence D: Time-based data retrieval (common in health devices)
+        [
+          [0xB1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // Get by timestamp - all records
+        ],
+        
+        // Sequence E: Device-specific commands based on KN-550BT device type
+        [
+          [0xAC, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34], // Similar to auth but with AC
+          [0xAD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]  // Potential "sync all" command
+        ],
+        
+        // Sequence F: Based on known OMRON protocol patterns (might be similar)
+        [
+          [0xA4, 0x00, 0x00, 0x00, 0x00], // Enter memory recall mode
+          [0xA4, 0x01, 0x00, 0x00, 0x00], // Get memory count
+          [0xA4, 0x02, 0x00, 0x00, 0x00]  // Get all measurement data
+        ]
+      ];
+      
+      // Try each sequence with proper delays
+      for (int i = 0; i < commandSequences.length; i++) {
+        final sequence = commandSequences[i];
+        debugPrint('>>> Trying command sequence ${i+1}/${commandSequences.length}');
+        
+        // Send each command in the sequence
+        for (int j = 0; j < sequence.length; j++) {
+          final command = sequence[j];
+          
+          try {
+            await _bpWriteChar!.write(command, withoutResponse: useWithoutResponse);
+            debugPrint('>>> Sent command ${j+1}/${sequence.length} of sequence ${i+1}: ${_formatHex(command)}');
+            
+            // Listen for data for a short period after each command
+            await Future.delayed(const Duration(milliseconds: 1500));
+          } catch (e) {
+            debugPrint('!!! Error sending command: $e');
+          }
+        }
+        
+        // Wait longer after each sequence to see if device responds
+        await Future.delayed(const Duration(milliseconds: 2000));
+        
+        debugPrint('>>> Completed command sequence ${i+1}');
+      }
+      
+      // 3. Try incremental indices to retrieve records one by one
+      debugPrint('>>> Trying record retrieval by index...');
+      for (int index = 0; index < 5; index++) {
+        // Common format for record retrieval by index
+        List<int> indexCommand = [0xA9, index, 0x00, 0x00];
+        await _bpWriteChar!.write(indexCommand, withoutResponse: useWithoutResponse);
+        debugPrint('>>> Requested record at index $index: ${_formatHex(indexCommand)}');
+        await Future.delayed(const Duration(milliseconds: 1500));
+      }
+      
+      debugPrint('>>> Data download request sequence completed');
+      debugPrint('>>> If no data was received, the device may require the companion app or a different command sequence');
+    } catch (e) {
+      debugPrint('!!! Error requesting data download: $e');
+    }
+  }
+  
+  /// Format a byte array as a hex string for logging
+  String _formatHex(List<int> data) {
+    return data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
   }
   
   /// Clean up resources - implements SensorAdapter.dispose()
