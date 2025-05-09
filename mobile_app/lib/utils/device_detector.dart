@@ -42,7 +42,7 @@ class DeviceDetector {
       // Check for Blood Pressure service - both standard and custom implementations
       final hasBloodPressureService = services.any((s) => 
         s.uuid.toString().toUpperCase().contains('636F6D2E') || // Custom BP service
-        s.uuid.toString().toUpperCase().contains('1810')); // Standard BP service 0x1810
+        s.uuid.toString().toUpperCase().contains('1800')); // Standard BP service 0x1810
       
       debugPrint('>>> Has weight service: $hasWeightService');
       debugPrint('>>> Has blood pressure service: $hasBloodPressureService');
