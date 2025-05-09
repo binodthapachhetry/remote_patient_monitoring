@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -372,46 +373,36 @@ class SyncService {
   }
   
   /// Send to cloud service
-  /// Replace with actual implementation for your cloud endpoint
   Future<bool> _sendToCloud(Map<String, dynamic> payload) async {
     try {
-      // TODO: Replace with actual endpoint
-      const url = 'https://healthcare-api-endpoint.example.com/hl7/v2/messages';
+      // Use the GCP Cloud Function endpoint
+      const url = 'https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net/receiveHealthData';
       
-      // In a real implementation, you would:
-      // 1. Add authentication
-      // 2. Handle different response codes
-      // 3. Parse the response for success/failure details
+      // Get Firebase auth token
+      final token = await _getAuthToken();
       
       debugPrint('>>> Sending payload to cloud: ${json.encode(payload)}');
       
-      // For development/testing, use a mock implementation
-      // Simulate network latency and occasional failures
-      await Future.delayed(const Duration(seconds: 1));
-      final random = math.Random();
-      final success = random.nextDouble() > 0.1; // 90% success rate
-      
-      if (success) {
-        debugPrint('>>> Mock cloud send successful');
-      } else {
-        debugPrint('!!! Mock cloud send failed');
-      }
-      
-      return success;
-      
-      /* Uncomment for real implementation
       final response = await http.post(
         Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${await _getAuthToken()}',
+          'Authorization': 'Bearer $token',
         },
         body: json.encode(payload),
       );
       
       debugPrint('>>> Cloud response: ${response.statusCode}');
-      return response.statusCode >= 200 && response.statusCode < 300;
-      */
+      final success = response.statusCode >= 200 && response.statusCode < 300;
+      
+      if (success) {
+        final responseData = json.decode(response.body);
+        debugPrint('>>> Message ID: ${responseData['messageId']}');
+      } else {
+        debugPrint('!!! Error response: ${response.body}');
+      }
+      
+      return success;
     } catch (e) {
       debugPrint('!!! Error sending to cloud: $e');
       return false;
@@ -420,8 +411,20 @@ class SyncService {
   
   /// Get auth token for API requests
   Future<String> _getAuthToken() async {
-    // TODO: Implement token retrieval from your auth service
-    return 'mock-token';
+    try {
+      // Get the current Firebase user and their ID token
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        debugPrint('!!! No authenticated user found');
+        return '';
+      }
+      
+      final token = await user.getIdToken();
+      debugPrint('>>> Successfully retrieved Firebase auth token');
+      return token;
+    } catch (e) {
+      debugPrint('!!! Error getting auth token: $e');
+      return '';
   }
   
   /// Count unique devices in a batch
