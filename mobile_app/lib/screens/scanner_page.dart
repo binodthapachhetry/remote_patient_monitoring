@@ -458,18 +458,37 @@ class _ScannerPageState extends State<ScannerPage> {
                             children: [
                               // Blood pressure specific controls
                               if (_adapter is BloodPressureAdapter)
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    (_adapter as BloodPressureAdapter).requestDataDownload();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Requesting stored readings from device...'),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.download),
-                                  label: const Text('Get Stored Readings'),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: () {
+                                        (_adapter as BloodPressureAdapter).requestDataDownload();
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Requesting stored readings from device...'),
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      },
+                                      icon: const Icon(Icons.download),
+                                      label: const Text('Get Readings'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton.icon(
+                                      onPressed: () {
+                                        (_adapter as BloodPressureAdapter).probeDeviceCharacteristics();
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Reading device characteristics...'),
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      },
+                                      icon: const Icon(Icons.info_outline),
+                                      label: const Text('Probe Device'),
+                                    ),
+                                  ],
                                 ),
                             ],
                           ),

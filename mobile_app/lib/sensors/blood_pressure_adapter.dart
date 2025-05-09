@@ -1008,6 +1008,36 @@ class BloodPressureAdapter extends SensorAdapter {
       
       // List of potential data download command patterns to try
       List<List<List<int>>> commandSequences = [
+        // NEW: KN-550BT specific command sequence based on observed protocol
+        [
+          // Authentication with direct access flags (specific timing sequence)
+          [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34],
+          // "Read memory" mode activation
+          [0xA3, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+          // Memory read request - matching response header
+          [0xA0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]
+        ],
+        
+        // NEW: Try direct memory access commands with different parameters
+        [
+          // Special auth for memory access
+          [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34],
+          // Memory mode switch (different byte pattern)
+          [0x53, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00],
+          // Explicit memory read command (using 0xA0 from response)
+          [0xA0, 0x38, 0x00, 0x01, 0xA1, 0x00, 0x00] 
+        ],
+        
+        // NEW: Try different bitmasks on key commands
+        [
+          // Auth with higher privilege bits
+          [0xAB, 0x01, 0x04, 0x31, 0x32, 0x33, 0x34],
+          // Memory mode switch with different mode bits
+          [0x53, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00], 
+          // Memory retrieval with different index bits
+          [0x51, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00]
+        ],
+        
         // Sequence A: Based on observed successful auth + common download patterns
         [
           [0xA6, 0x01, 0x00], // Common "get data count" command
@@ -1085,6 +1115,36 @@ class BloodPressureAdapter extends SensorAdapter {
       }
       
       debugPrint('>>> Data download request sequence completed');
+      
+      // Try special command sequence specifically for KN-550BT
+      // This attempts to mimic exactly what the companion app is doing
+      debugPrint('>>> Trying specialized KN-550BT download sequence...');
+      
+      try {
+        // 1. First send rapid authentication command followed by specific timing
+        await _bpWriteChar!.write([0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34], withoutResponse: useWithoutResponse);
+        
+        // Specific delay observed in protocol analysis (exactly 1200ms)
+        await Future.delayed(const Duration(milliseconds: 1200));
+        
+        // 2. Put device in "memory read" mode (special mode switch command)
+        await _bpWriteChar!.write([0x53, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00], withoutResponse: useWithoutResponse);
+        await Future.delayed(const Duration(milliseconds: 1200));
+        
+        // 3. Send the "mirror" of what we see in the response header (0xA0) as command
+        await _bpWriteChar!.write([0xA0, 0x38, 0x00, 0x01, 0x00, 0x00, 0x00], withoutResponse: useWithoutResponse);
+        await Future.delayed(const Duration(milliseconds: 1200));
+        
+        // 4. Try requesting records at specific memory addresses
+        for (int addr = 0; addr < 3; addr++) {
+          // The second byte seems like a memory address or record index
+          await _bpWriteChar!.write([0xA0, addr, 0x00, 0x01, 0x00, 0x00, 0x00], withoutResponse: useWithoutResponse);
+          await Future.delayed(const Duration(milliseconds: 1200));
+        }
+      } catch (e) {
+        debugPrint('!!! Error during specialized KN-550BT sequence: $e');
+      }
+      
       debugPrint('>>> If no data was received, the device may require the companion app or a different command sequence');
     } catch (e) {
       debugPrint('!!! Error requesting data download: $e');
@@ -1094,6 +1154,68 @@ class BloodPressureAdapter extends SensorAdapter {
   /// Format a byte array as a hex string for logging
   String _formatHex(List<int> data) {
     return data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+  }
+  
+  /// Read characteristic values to help understand the device protocol
+  Future<void> probeDeviceCharacteristics() async {
+    if (_device == null) {
+      debugPrint('!!! Cannot probe characteristics: No device connected');
+      return;
+    }
+    
+    try {
+      debugPrint('>>> Probing device characteristics for protocol discovery...');
+      
+      // Discover services to ensure we have fresh data
+      final services = await _device!.discoverServices();
+      
+      for (var service in services) {
+        debugPrint('>>> Probing characteristics in service: ${service.uuid}');
+        
+        for (var characteristic in service.characteristics) {
+          // Only try to read from characteristics with read property
+          if (characteristic.properties.read) {
+            try {
+              final value = await characteristic.read();
+              final hexValue = _formatHex(value);
+              
+              // Convert to ASCII if it looks like text
+              String asciiValue = '';
+              if (value.every((b) => b >= 32 && b <= 126)) {
+                asciiValue = String.fromCharCodes(value);
+                debugPrint('>>> Read: ${characteristic.uuid} = "$asciiValue" (ASCII)');
+              } else {
+                debugPrint('>>> Read: ${characteristic.uuid} = $hexValue (HEX)');
+              }
+              
+              // If this is a device info characteristic, log in more detail
+              if (service.uuid.toString().toUpperCase().contains('180A')) {
+                const Map<String, String> infoCharNames = {
+                  '2A23': 'System ID',
+                  '2A24': 'Model Number',
+                  '2A25': 'Serial Number',
+                  '2A26': 'Firmware Rev',
+                  '2A27': 'Hardware Rev',
+                  '2A28': 'Software Rev',
+                  '2A29': 'Manufacturer Name',
+                  '2A2A': 'Regulatory Cert',
+                  '2A50': 'PnP ID',
+                };
+                
+                final charName = infoCharNames[characteristic.uuid.toString().substring(4, 8).toUpperCase()] ?? 'Unknown';
+                debugPrint('>>> Device Info [$charName]: $hexValue ${asciiValue.isNotEmpty ? "($asciiValue)" : ""}');
+              }
+            } catch (e) {
+              debugPrint('!!! Error reading ${characteristic.uuid}: $e');
+            }
+          }
+        }
+      }
+      
+      debugPrint('>>> Device probe complete');
+    } catch (e) {
+      debugPrint('!!! Error probing device: $e');
+    }
   }
   
   /// Clean up resources - implements SensorAdapter.dispose()
