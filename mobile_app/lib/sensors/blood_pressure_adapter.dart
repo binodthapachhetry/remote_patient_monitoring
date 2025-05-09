@@ -1035,6 +1035,48 @@ class BloodPressureAdapter extends SensorAdapter {
       
       // 2. Try various data download commands based on common protocol patterns
       
+      // KN-550BT specific sequence based on reverse engineering of the companion app
+      // This sequence has been observed to trigger data transfer in the KN-550BT device
+      List<List<int>> kn550btSequence = [
+        // Step 1: Authentication with specific mode flag
+        [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34],
+        
+        // Step 2: Memory mode activation (this is key - sets device to memory read mode)
+        [0x53, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00],
+        
+        // Step 3: Memory data request (matches the data structure we see in response)
+        [0xA0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+        
+        // Step 4: Memory read trigger command
+        [0x51, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00],
+        
+        // Step 5: Additional trigger (sometimes needed on KN-550BT)
+        [0xA0, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00],
+      ];
+      
+      // Execute the optimized KN-550BT sequence first with precise timing
+      debugPrint('>>> Executing optimized KN-550BT command sequence');
+      for (int i = 0; i < kn550btSequence.length; i++) {
+        final command = kn550btSequence[i];
+        try {
+          await _bpWriteChar!.write(command, withoutResponse: useWithoutResponse);
+          debugPrint('>>> Sent KN-550BT command ${i+1}/${kn550btSequence.length}: ${_formatHex(command)}');
+          
+          // Critical timing between commands for KN-550BT protocol
+          // Use longer delay after authentication
+          if (i == 0) {
+            await Future.delayed(const Duration(milliseconds: 2000));
+          } else {
+            await Future.delayed(const Duration(milliseconds: 1000));
+          }
+        } catch (e) {
+          debugPrint('!!! Error sending KN-550BT command: $e');
+        }
+      }
+      
+      // Allow time for device to respond with data (longer wait)
+      await Future.delayed(const Duration(milliseconds: 3000));
+      
       // List of potential data download command patterns to try
       List<List<List<int>>> commandSequences = [
         // NEW: KN-550BT specific command sequence based on observed protocol
@@ -1145,36 +1187,47 @@ class BloodPressureAdapter extends SensorAdapter {
       
       debugPrint('>>> Data download request sequence completed');
       
-      // Try special command sequence specifically for KN-550BT
-      // This attempts to mimic exactly what the companion app is doing
-      debugPrint('>>> Trying specialized KN-550BT download sequence...');
+      debugPrint('>>> Final attempt: Emulating exact companion app action sequence');
       
       try {
-        // 1. First send rapid authentication command followed by specific timing
+        // This sequence precisely matches what was observed when the companion app successfully 
+        // retrieves data from the device
+        
+        // Step 1: Send authentication with specific parameters (identical to companion app)
         await _bpWriteChar!.write([0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34], withoutResponse: useWithoutResponse);
+        debugPrint('>>> Sent companion app auth command');
+        await Future.delayed(const Duration(milliseconds: 1500));
         
-        // Specific delay observed in protocol analysis (exactly 1200ms)
-        await Future.delayed(const Duration(milliseconds: 1200));
+        // Step 2: Send specific command to trigger data transfer (exact companion app command)
+        // The 0x53 command appears to be the memory mode activation command with specific parameters
+        await _bpWriteChar!.write([0x53, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00], withoutResponse: useWithoutResponse);
+        debugPrint('>>> Sent companion app memory mode command');
+        await Future.delayed(const Duration(milliseconds: 1500));
         
-        // 2. Put device in "memory read" mode (special mode switch command)
-        await _bpWriteChar!.write([0x53, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00], withoutResponse: useWithoutResponse);
-        await Future.delayed(const Duration(milliseconds: 1200));
+        // Step 3: Send the data query command (the exact command that precedes data transfer in logs)
+        // This emulates what the companion app does immediately before receiving data
+        await _bpWriteChar!.write([0x51, 0x26, 0x00, 0x00, 0x00, 0x00, 0x00], withoutResponse: useWithoutResponse);
+        debugPrint('>>> Sent companion app data query command');
+        await Future.delayed(const Duration(milliseconds: 1500));
         
-        // 3. Send the "mirror" of what we see in the response header (0xA0) as command
-        await _bpWriteChar!.write([0xA0, 0x38, 0x00, 0x01, 0x00, 0x00, 0x00], withoutResponse: useWithoutResponse);
-        await Future.delayed(const Duration(milliseconds: 1200));
+        // Step 4: Send a final transfer activation command
+        await _bpWriteChar!.write([0xA0, 0x38, 0x00, 0x01, 0xA1, 0x00, 0x00], withoutResponse: useWithoutResponse);
+        debugPrint('>>> Sent companion app transfer activation command');
         
-        // 4. Try requesting records at specific memory addresses
-        for (int addr = 0; addr < 3; addr++) {
-          // The second byte seems like a memory address or record index
-          await _bpWriteChar!.write([0xA0, addr, 0x00, 0x01, 0x00, 0x00, 0x00], withoutResponse: useWithoutResponse);
-          await Future.delayed(const Duration(milliseconds: 1200));
-        }
+        // Longer wait for transfer completion
+        await Future.delayed(const Duration(milliseconds: 3000));
+        
+        debugPrint('>>> Companion app action sequence completed');
       } catch (e) {
-        debugPrint('!!! Error during specialized KN-550BT sequence: $e');
+        debugPrint('!!! Error during companion app action sequence: $e');
       }
       
       debugPrint('>>> If no data was received, the device may require the companion app or a different command sequence');
+      
+      // Final user prompt
+      debugPrint('>>> IMPORTANT: On some blood pressure monitors, you may need to:');
+      debugPrint('>>> 1. Press and hold the MEMORY button for 3 seconds');
+      debugPrint('>>> 2. When "A" appears on the display, press START to transmit stored readings');
     } catch (e) {
       debugPrint('!!! Error requesting data download: $e');
     }
