@@ -425,6 +425,7 @@ class SyncService {
     } catch (e) {
       debugPrint('!!! Error getting auth token: $e');
       return '';
+    }
   }
   
   /// Count unique devices in a batch
