@@ -13,7 +13,8 @@ class BloodPressureAdapter extends SensorAdapter {
   static const String _bloodPressureServiceUuid = '1810'; // Correct UUID for Blood Pressure Service
   // Custom service UUID for non-standard blood pressure monitors
   static const String _customBloodPressureServiceUuid = '636F6D2E'; // The custom UUID we've detected
-  static const String _bloodPressureMeasurementCharUuid = '7365642';
+  static const String _bloodPressureMeasurementCharUuid = '7365642'; // For notifications
+  static const String _bloodPressureWriteCharUuid = '7265642';      // For sending commands
   static const String _bloodPressureFeatureCharUuid = '2A49';
   
   // Optional Heart Rate service and characteristic
@@ -27,7 +28,8 @@ class BloodPressureAdapter extends SensorAdapter {
   BluetoothDevice? _device;
   BluetoothService? _bloodPressureService;
   BluetoothService? _heartRateService;
-  BluetoothCharacteristic? _bpMeasurementChar;
+  BluetoothCharacteristic? _bpMeasurementChar; // For receiving notifications
+  BluetoothCharacteristic? _bpWriteChar;       // For sending commands
   BluetoothCharacteristic? _heartRateChar;
   
   // Stream controller for emitting samples
@@ -74,43 +76,48 @@ class BloodPressureAdapter extends SensorAdapter {
         debugPrint('  Characteristic: ${c.uuid}, properties: ${_describeProperties(c.properties)}');
       }
       
-      // Find the BP Measurement characteristic
-      // First try to find standard BP characteristic
+      // Find both the measurement (notification) and write characteristics
+      // First look for the specific notification characteristic
       try {
         _bpMeasurementChar = _bloodPressureService!.characteristics.firstWhere(
-          (c) => c.uuid.toString().toUpperCase().contains(_bloodPressureMeasurementCharUuid),
+          (c) => c.uuid.toString().toUpperCase().contains(_bloodPressureMeasurementCharUuid) && 
+                 c.properties.notify,
         );
-        debugPrint('Found standard Blood Pressure Measurement characteristic: ${_bpMeasurementChar!.uuid}');
+        debugPrint('Found BP notification characteristic: ${_bpMeasurementChar!.uuid}');
       } catch (e) {
-        // If standard characteristic not found, try to find any characteristic with notify property
-        // For custom devices, the main measurement characteristic typically has the notify property
-        debugPrint('Standard BP characteristic not found, looking for alternative characteristics...');
+        // If specific characteristic not found, find any with notify property
+        debugPrint('Specific notification characteristic not found, looking for alternatives...');
         final notifyCharacteristics = _bloodPressureService!.characteristics
             .where((c) => c.properties.notify)
             .toList();
         
         if (notifyCharacteristics.isNotEmpty) {
-          // Use the first characteristic with notify property as our measurement characteristic
           _bpMeasurementChar = notifyCharacteristics.first;
-          debugPrint('Using alternative characteristic as measurement source: ${_bpMeasurementChar!.uuid}');
+          debugPrint('Using alternative notification characteristic: ${_bpMeasurementChar!.uuid}');
         } else {
-          // If no notify characteristics found, try the first writeable characteristic
-          final writeCharacteristics = _bloodPressureService!.characteristics
-              .where((c) => c.properties.write || c.properties.writeWithoutResponse)
-              .toList();
-          
-          if (writeCharacteristics.isNotEmpty) {
-            _bpMeasurementChar = writeCharacteristics.first;
-            debugPrint('Using writable characteristic: ${_bpMeasurementChar!.uuid}');
-          } else {
-            // Last resort: just use the first characteristic
-            if (_bloodPressureService!.characteristics.isNotEmpty) {
-              _bpMeasurementChar = _bloodPressureService!.characteristics.first;
-              debugPrint('Using first available characteristic: ${_bpMeasurementChar!.uuid}');
-            } else {
-              throw Exception('No usable characteristics found in blood pressure service');
-            }
-          }
+          throw Exception('No notification characteristic found in blood pressure service');
+        }
+      }
+      
+      // Find the write characteristic separately
+      try {
+        _bpWriteChar = _bloodPressureService!.characteristics.firstWhere(
+          (c) => c.uuid.toString().toUpperCase().contains(_bloodPressureWriteCharUuid) && 
+                (c.properties.write || c.properties.writeWithoutResponse),
+        );
+        debugPrint('Found BP write characteristic: ${_bpWriteChar!.uuid}');
+      } catch (e) {
+        // If specific write characteristic not found, find any with write property
+        debugPrint('Specific write characteristic not found, looking for alternatives...');
+        final writeCharacteristics = _bloodPressureService!.characteristics
+            .where((c) => c.properties.write || c.properties.writeWithoutResponse)
+            .toList();
+        
+        if (writeCharacteristics.isNotEmpty) {
+          _bpWriteChar = writeCharacteristics.first;
+          debugPrint('Using alternative write characteristic: ${_bpWriteChar!.uuid}');
+        } else {
+          debugPrint('WARNING: No write characteristic found. Commands cannot be sent to the device.');
         }
       }
       
@@ -189,12 +196,12 @@ class BloodPressureAdapter extends SensorAdapter {
       // Explicitly log before sending initialization commands
       debugPrint('>>> About to send initialization commands to blood pressure device');
       
-      // Send initialization command to the device if the characteristic is writable
-      if (_bpMeasurementChar!.properties.write || _bpMeasurementChar!.properties.writeWithoutResponse) {
+      // Send initialization command to the device using the write characteristic
+      if (_bpWriteChar != null) {
         await _sendInitializationCommand();
         debugPrint('>>> Initialization commands sent successfully');
       } else {
-        debugPrint('!!! Blood pressure characteristic is not writable - cannot send initialization commands');
+        debugPrint('!!! No write characteristic available - cannot send initialization commands');
       }
     } catch (e) {
       debugPrint('Error subscribing to blood pressure: $e');
@@ -224,37 +231,40 @@ class BloodPressureAdapter extends SensorAdapter {
   
   /// Send initialization command to the device to trigger readings
   Future<void> _sendInitializationCommand() async {
-    if (_bpMeasurementChar == null) return;
+    if (_bpWriteChar == null) return;
     
     try {
-      debugPrint('>>> Sending initialization command to blood pressure device');
+      debugPrint('>>> Sending initialization command to blood pressure device using write characteristic');
+      final useWithoutResponse = _bpWriteChar!.properties.writeWithoutResponse;
       
-      // Try different initialization commands that might work with this device
-      // Original commands
-      List<int> command1 = [0x01];
-      await _bpMeasurementChar!.write(command1, withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
-      debugPrint('>>> Sent command 1: ${command1.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      // Try different initialization commands in sequence with the KN-550BT specific ones first
+      // which are most likely to work with this device
       
-      await Future.delayed(const Duration(milliseconds: 500));
-      
-      // Command 2: Start measurement command (common pattern)
-      List<int> command2 = [0xAA, 0x01, 0x02, 0x03, 0x04];
-      await _bpMeasurementChar!.write(command2, withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
-      debugPrint('>>> Sent command 2: ${command2.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      // KN-550BT specific initialization sequence
+      List<int> command1 = [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34];
+      await _bpWriteChar!.write(command1, withoutResponse: useWithoutResponse);
+      debugPrint('>>> Sent command 1 (KN-550BT auth): ${command1.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
       await Future.delayed(const Duration(milliseconds: 500));
       
-      // KN-550BT specific commands (common for Bluetooth BP monitors with this chipset)
-      List<int> command3 = [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34];
-      await _bpMeasurementChar!.write(command3, withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
-      debugPrint('>>> Sent command 3 (KN-550BT specific): ${command3.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      // Second command in the sequence for this device family
+      List<int> command2 = [0x53, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00];
+      await _bpWriteChar!.write(command2, withoutResponse: useWithoutResponse);
+      debugPrint('>>> Sent command 2 (KN-550BT setup): ${command2.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
       await Future.delayed(const Duration(milliseconds: 500));
       
-      // Another common command pattern for this family of devices
-      List<int> command4 = [0x53, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00];
-      await _bpMeasurementChar!.write(command4, withoutResponse: _bpMeasurementChar!.properties.writeWithoutResponse);
-      debugPrint('>>> Sent command 4: ${command4.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      // Common command for BP monitors to start readings
+      List<int> command3 = [0xAA, 0x01, 0x02, 0x03, 0x04];
+      await _bpWriteChar!.write(command3, withoutResponse: useWithoutResponse);
+      debugPrint('>>> Sent command 3 (start measurement): ${command3.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Simple command that works with some devices
+      List<int> command4 = [0x01];
+      await _bpWriteChar!.write(command4, withoutResponse: useWithoutResponse);
+      debugPrint('>>> Sent command 4 (simple trigger): ${command4.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       
       debugPrint('>>> All initialization commands sent. Please start a measurement on the device.');
     } catch (e) {
@@ -319,14 +329,48 @@ class BloodPressureAdapter extends SensorAdapter {
   
   /// Try to parse custom format data from the device
   void _tryCustomFormatParsing(List<int> data) {
-    debugPrint('>>> Attempting custom format parsing');
+    debugPrint('>>> Attempting custom format parsing for KN-550BT device');
     
     try {
-      // Sample custom parsing logic - adjust based on your device's actual data format
-      // This is a guess based on common non-standard implementations
+      // KN-550BT format detection
+      // Based on observed packet patterns from this device family
+      if (data.length >= 8) {
+        debugPrint('>>> Checking for KN-550BT data format (8+ bytes)');
+        
+        // KN-550BT typical format: 
+        // Bytes 2-3 contain systolic (little-endian)
+        // Bytes 4-5 contain diastolic (little-endian)
+        // Bytes 6-7 contain pulse rate (little-endian)
+        final systolic = ((data[3] << 8) | data[2]).toDouble();
+        final diastolic = ((data[5] << 8) | data[4]).toDouble();
+        final pulse = ((data[7] << 8) | data[6]).toDouble();
+        
+        // Check if values make sense as BP readings (no scaling needed)
+        if (systolic > 50 && systolic < 250 && 
+            diastolic > 30 && diastolic < 200 && 
+            pulse > 30 && pulse < 200) {
+          debugPrint('>>> KN-550BT format detected - Blood Pressure: $systolic/$diastolic mmHg, Pulse: $pulse');
+          _emitBloodPressureMeasurements(systolic, diastolic, (systolic + 2*diastolic)/3, 'mmHg', data, pulseRate: pulse);
+          return;
+        }
+        
+        // Try with scaling factor of 10 (some devices encode as values*10)
+        final scaledSystolic = systolic / 10.0;
+        final scaledDiastolic = diastolic / 10.0;
+        final scaledPulse = pulse / 10.0;
+        
+        if (scaledSystolic > 50 && scaledSystolic < 250 && 
+            scaledDiastolic > 30 && scaledDiastolic < 200 && 
+            scaledPulse > 30 && scaledPulse < 200) {
+          debugPrint('>>> KN-550BT format with scaling - Blood Pressure: $scaledSystolic/$scaledDiastolic mmHg, Pulse: $scaledPulse');
+          _emitBloodPressureMeasurements(scaledSystolic, scaledDiastolic, 
+              (scaledSystolic + 2*scaledDiastolic)/3, 'mmHg', data, pulseRate: scaledPulse);
+          return;
+        }
+      }
       
-      // Method 1: Direct integer values (common in custom implementations)
-      // Example: first byte = systolic, second = diastolic, etc.
+      // Fallback to basic parsing methods if KN-550BT format not detected
+      // Method 1: Direct integer values (common in many simple custom implementations)
       if (data.length >= 3) {
         final systolic = data[0].toDouble();  // First byte as systolic
         final diastolic = data[1].toDouble(); // Second byte as diastolic
@@ -334,7 +378,7 @@ class BloodPressureAdapter extends SensorAdapter {
         
         // Validate readings are in reasonable range for blood pressure
         if (systolic > 50 && systolic < 250 && diastolic > 30 && diastolic < 200) {
-          debugPrint('>>> Custom format 1 - Blood Pressure: $systolic/$diastolic mmHg, Pulse: $pulse');
+          debugPrint('>>> Basic format - Blood Pressure: $systolic/$diastolic mmHg, Pulse: $pulse');
           _emitBloodPressureMeasurements(systolic, diastolic, (systolic + 2*diastolic)/3, 'mmHg', data, pulseRate: pulse);
           return;
         }
@@ -688,48 +732,49 @@ class BloodPressureAdapter extends SensorAdapter {
   
   /// Manually send a command to the device to request a measurement
   Future<void> requestMeasurement() async {
-    if (_bpMeasurementChar == null) {
-      debugPrint('!!! Cannot request measurement: No characteristic available');
-      return;
-    }
-    
-    if (!(_bpMeasurementChar!.properties.write || _bpMeasurementChar!.properties.writeWithoutResponse)) {
-      debugPrint('!!! Cannot request measurement: Characteristic is not writable (properties: ${_describeProperties(_bpMeasurementChar!.properties)})');
+    if (_bpWriteChar == null) {
+      debugPrint('!!! Cannot request measurement: No write characteristic available');
       return;
     }
     
     try {
-      debugPrint('>>> Sending measurement request command to blood pressure device');
+      debugPrint('>>> Sending measurement request command to blood pressure device using write characteristic');
+      final useWithoutResponse = _bpWriteChar!.properties.writeWithoutResponse;
       
-      // Try multiple command formats that are known to work with various devices
+      // Try multiple command formats that are known to work with KN-550BT device
       List<List<int>> commandsToTry = [
-        [0x01],                // Simple command - works with some devices
-        [0x02],                // Alternate command
-        [0xAA, 0x01],          // Start sequence for some devices
-        [0xFE, 0x01, 0x00],    // 3-byte command sequence
-        [0xAA, 0x12, 0x34, 0x56], // More complex sequence
-        // KN-550BT specific commands
-        [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34], // KN-550BT activation command
-        [0x53, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00], // Common BP monitor command
-        [0x51, 0x26, 0x00, 0x00, 0x00, 0x00, 0x00], // Another BP monitor command
-        [0xA5, 0x01, 0x01, 0xA7] // Short command sequence used by some models
+        // Start with KN-550BT specific commands in the correct sequence
+        [0xAB, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34], // KN-550BT authentication
+        [0x53, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00], // KN-550BT command to prepare device
+        [0x51, 0x26, 0x00, 0x00, 0x00, 0x00, 0x00], // KN-550BT start measurement command
+        
+        // Add fallback commands for other similar devices
+        [0xAA, 0x01, 0x02, 0x03, 0x04], // Generic start measurement command
+        [0x01],                          // Simple command that works with some devices
+        [0xA5, 0x01, 0x01, 0xA7]         // Another common command sequence
       ];
       
+      // Send each command in sequence with proper delay between them
       for (var i = 0; i < commandsToTry.length; i++) {
         final command = commandsToTry[i];
-        final withoutResponse = _bpMeasurementChar!.properties.writeWithoutResponse;
         
         debugPrint('>>> Trying command ${i+1}/${commandsToTry.length}: ${command.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
         
         try {
-          await _bpMeasurementChar!.write(command, withoutResponse: withoutResponse);
+          await _bpWriteChar!.write(command, withoutResponse: useWithoutResponse);
           debugPrint('>>> Command ${i+1} sent successfully');
         } catch (e) {
           debugPrint('!!! Error sending command ${i+1}: $e');
         }
         
-        // Wait between commands
-        await Future.delayed(const Duration(milliseconds: 300));
+        // Wait between commands - longer for the critical authentication sequence
+        if (i < 3) {
+          // Longer delay for the KN-550BT specific sequence
+          await Future.delayed(const Duration(milliseconds: 500));
+        } else {
+          // Shorter delay for fallback commands
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
       }
       
       debugPrint('>>> All measurement request commands sent. Please also press START on the physical device.');

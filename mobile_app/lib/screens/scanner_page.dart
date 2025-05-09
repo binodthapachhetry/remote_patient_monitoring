@@ -169,17 +169,17 @@ class _ScannerPageState extends State<ScannerPage> {
                        // Try to request another measurement if adapter is blood pressure type
                        if (_adapter.runtimeType.toString().contains('BloodPressure')) {
                          ScaffoldMessenger.of(context).showSnackBar(
-                           const SnackBar(content: Text('Sending command to blood pressure monitor...')),
+                           const SnackBar(content: Text('Sending commands to blood pressure monitor...')),
                          );
                          (_adapter as dynamic).requestMeasurement();
-                    
+                        
                          // Set a short timer to show a followup message
                          Future.delayed(const Duration(seconds: 2), () {
                            if (mounted) {
                              ScaffoldMessenger.of(context).showSnackBar(
                                const SnackBar(
-                                 content: Text('Please also press START on the blood pressure monitor'),
-                                 duration: Duration(seconds: 5),
+                                 content: Text('If no response: 1) Make sure cuff is properly placed, 2) Press START on the device'),
+                                 duration: Duration(seconds: 8),
                                ),
                              );
                            }
