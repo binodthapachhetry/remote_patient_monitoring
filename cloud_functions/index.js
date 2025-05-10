@@ -8,7 +8,7 @@
 const {HealthcareClient} = require('@google-cloud/healthcare');
 const healthcareClient = new HealthcareClient();
 
-exports.receiveHealthData = async (req, res) => {
+exports.helloPubSub = async (req, res) => {
   // Set CORS headers for preflight requests
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
