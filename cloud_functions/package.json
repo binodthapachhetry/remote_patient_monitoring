@@ -1,0 +1,15 @@
+{
+  "name": "health-data-receiver",
+  "version": "1.0.0",
+  "description": "Cloud Function to receive health data from mobile app and forward to Healthcare API",
+  "main": "index.js",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@google-cloud/healthcare": "^4.0.0"
+  },
+  "author": "Remote Patient Monitoring Team",
+  "license": "UNLICENSED",
+  "private": true
+}
