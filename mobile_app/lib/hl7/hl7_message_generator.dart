@@ -191,3 +191,103 @@ class HL7MessageGenerator {
     return segments.join('\n');
   }
 }
+import 'dart:math' as math;
+import '../models/health_measurement.dart';
+
+/// Generates HL7 message segments from health measurements for transmission
+class HL7MessageGenerator {
+  /// Generate HL7 message segments from a list of health measurements
+  List<Map<String, dynamic>> generateMessageSegments(List<HealthMeasurement> measurements) {
+    if (measurements.isEmpty) return [];
+    
+    final messageSegments = <Map<String, dynamic>>[];
+    
+    // Group measurements by type
+    final Map<String, List<HealthMeasurement>> measurementsByType = {};
+    for (final measurement in measurements) {
+      if (!measurementsByType.containsKey(measurement.type)) {
+        measurementsByType[measurement.type] = [];
+      }
+      measurementsByType[measurement.type]!.add(measurement);
+    }
+    
+    // Generate segments for each measurement type
+    measurementsByType.forEach((type, typeMeasurements) {
+      for (final measurement in typeMeasurements) {
+        messageSegments.add(_createObservationSegment(measurement));
+      }
+    });
+    
+    return messageSegments;
+  }
+  
+  /// Create an HL7 observation segment for a single measurement
+  Map<String, dynamic> _createObservationSegment(HealthMeasurement measurement) {
+    // Format timestamps
+    final observationTime = _formatHL7DateTime(
+      DateTime.fromMillisecondsSinceEpoch(measurement.timestamp)
+    );
+    final messageTime = _formatHL7DateTime(DateTime.now());
+    
+    // Generate a unique message ID
+    final messageId = 'RPM${DateTime.now().millisecondsSinceEpoch}${math.Random().nextInt(1000)}';
+    
+    // Get descriptive name for the measurement type
+    final typeName = _getDescriptiveTypeName(measurement.type);
+    
+    // Create HL7 fields
+    return {
+      'messageType': 'ORU^R01',
+      'messageId': messageId,
+      'messageTime': messageTime,
+      'participantId': measurement.participantId,
+      'deviceId': measurement.deviceId,
+      'observationType': measurement.type,
+      'observationTypeName': typeName,
+      'observationValue': measurement.value,
+      'observationUnit': measurement.unit,
+      'observationTime': observationTime,
+      'metadata': measurement.metadata,
+    };
+  }
+  
+  /// Format a DateTime into HL7 format
+  String _formatHL7DateTime(DateTime date) {
+    return date.year.toString() +
+      date.month.toString().padLeft(2, '0') +
+      date.day.toString().padLeft(2, '0') +
+      date.hour.toString().padLeft(2, '0') +
+      date.minute.toString().padLeft(2, '0') +
+      date.second.toString().padLeft(2, '0');
+  }
+  
+  /// Get a human-readable name for a measurement type
+  String _getDescriptiveTypeName(String type) {
+    switch (type) {
+      case 'heart_rate':
+        return 'Heart Rate';
+      case 'blood_pressure_systolic':
+        return 'Blood Pressure - Systolic';
+      case 'blood_pressure_diastolic':
+        return 'Blood Pressure - Diastolic';
+      case 'weight':
+        return 'Body Weight';
+      case 'glucose':
+        return 'Blood Glucose';
+      case 'oxygen_saturation':
+        return 'Oxygen Saturation';
+      case 'temperature':
+        return 'Body Temperature';
+      case 'respiratory_rate':
+        return 'Respiratory Rate';
+      default:
+        // Capitalize each word and replace underscores with spaces
+        return type
+            .split('_')
+            .map((word) => word.isEmpty 
+                ? '' 
+                : word[0].toUpperCase() + word.substring(1))
+            .join(' ');
+    }
+  }
+}
