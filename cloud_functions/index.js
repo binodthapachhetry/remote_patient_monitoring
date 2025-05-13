@@ -8,6 +8,68 @@
 const {HealthcareClient} = require('@google-cloud/healthcare');
 const healthcareClient = new HealthcareClient();
 
+// For compatibility with PubSub trigger
+exports.helloPubSub = async (pubSubEvent, context) => {
+  try {
+    console.log('Received PubSub message', context.eventId);
+    
+    // Extract the message data
+    const messageData = JSON.parse(
+      Buffer.from(pubSubEvent.data, 'base64').toString()
+    );
+    
+    console.log(`Processing ${messageData.measurements?.length || 0} measurements from PubSub`);
+    
+    // Process measurements similar to the HTTP endpoint
+    // Get environment variables
+    const projectId = process.env.PROJECT_ID;
+    const location = process.env.LOCATION || 'us-central1';
+    const datasetId = process.env.DATASET_ID || 'health-dataset';
+    const hl7v2StoreId = process.env.HL7V2_STORE_ID || 'test-hl7v2-store';
+
+    if (!projectId) {
+      console.error('Missing PROJECT_ID environment variable');
+      return;
+    }
+
+    const parent = `projects/${projectId}/locations/${location}/datasets/${datasetId}/hl7V2Stores/${hl7v2StoreId}`;
+    
+    // Process each measurement
+    if (messageData.measurements && Array.isArray(messageData.measurements)) {
+      await Promise.all(messageData.measurements.map(async (measurement) => {
+        try {
+          // Validate required fields
+          if (!measurement.participantId || !measurement.type || 
+              measurement.value === undefined || !measurement.unit || 
+              !measurement.timestamp) {
+            console.error('Missing required fields in measurement', measurement.id || 'unknown');
+            return;
+          }
+
+          // Create HL7v2 message
+          const hl7v2Message = createHL7v2Message(measurement);
+          
+          // Send to Healthcare API
+          const [response] = await healthcareClient.projects.locations.datasets.hl7V2Stores.messages.create({
+            parent,
+            body: {
+              message: {
+                data: Buffer.from(hl7v2Message).toString('base64')
+              }
+            }
+          });
+
+          console.log(`Successfully sent message for participant ${measurement.participantId}, message ID: ${response.name}`);
+        } catch (err) {
+          console.error('Error processing measurement:', err);
+        }
+      }));
+    }
+  } catch (error) {
+    console.error('Error processing PubSub message:', error);
+  }
+};
+
 exports.processHealthData = async (req, res) => {
   // Set CORS headers for preflight requests
   res.set('Access-Control-Allow-Origin', '*');
