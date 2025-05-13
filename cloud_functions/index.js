@@ -77,6 +77,42 @@ exports.helloPubSub = async (pubSubEvent, context) => {
   }
 };
 
+exports.receiveHealthData = async (req, res) => {
+  // Set CORS headers for preflight requests
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    // Handle preflight requests
+    res.status(204).send('');
+    return;
+  }
+
+  // Only allow POST
+  if (req.method !== 'POST') {
+    res.status(405).send('Method Not Allowed');
+    return;
+  }
+  
+  try {
+    // Extract request body
+    const data = req.body;
+    if (!data) {
+      res.status(400).send('Invalid request: request body is required');
+      return;
+    }
+
+    console.log(`Processing health data request: ${JSON.stringify(data)}`);
+    
+    // Forward to processHealthData function
+    return processHealthData(req, res);
+  } catch (err) {
+    console.error('Error in receiveHealthData:', err);
+    res.status(500).send(`Internal server error: ${err.message}`);
+  }
+};
+
 exports.processHealthData = async (req, res) => {
   // Set CORS headers for preflight requests
   res.set('Access-Control-Allow-Origin', '*');
