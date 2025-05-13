@@ -5,8 +5,7 @@
  * @param {!express:Request} req HTTP request context.
  * @param {!express:Response} res HTTP response context.
  */
-const {HealthcareClient} = require('@google-cloud/healthcare');
-const healthcareClient = new HealthcareClient();
+const {google} = require('googleapis');
 
 // For compatibility with PubSub trigger
 exports.helloPubSub = async (pubSubEvent, context) => {
@@ -34,6 +33,14 @@ exports.helloPubSub = async (pubSubEvent, context) => {
 
     const parent = `projects/${projectId}/locations/${location}/datasets/${datasetId}/hl7V2Stores/${hl7v2StoreId}`;
     
+    // Set up the Healthcare API client
+    const healthcare = google.healthcare({
+      version: 'v1',
+      auth: await google.auth.getClient({
+        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+      })
+    });
+    
     // Process each measurement
     if (messageData.measurements && Array.isArray(messageData.measurements)) {
       await Promise.all(messageData.measurements.map(async (measurement) => {
@@ -50,16 +57,16 @@ exports.helloPubSub = async (pubSubEvent, context) => {
           const hl7v2Message = createHL7v2Message(measurement);
           
           // Send to Healthcare API
-          const [response] = await healthcareClient.projects.locations.datasets.hl7V2Stores.messages.create({
+          const response = await healthcare.projects.locations.datasets.hl7V2Stores.messages.create({
             parent,
-            body: {
+            requestBody: {
               message: {
                 data: Buffer.from(hl7v2Message).toString('base64')
               }
             }
           });
 
-          console.log(`Successfully sent message for participant ${measurement.participantId}, message ID: ${response.name}`);
+          console.log(`Successfully sent message for participant ${measurement.participantId}, message ID: ${response.data.name}`);
         } catch (err) {
           console.error('Error processing measurement:', err);
         }
@@ -115,6 +122,14 @@ exports.processHealthData = async (req, res) => {
     // Set up the parent resource path
     const parent = `projects/${projectId}/locations/${location}/datasets/${datasetId}/hl7V2Stores/${hl7v2StoreId}`;
     
+    // Set up the Healthcare API client
+    const healthcare = google.healthcare({
+      version: 'v1',
+      auth: await google.auth.getClient({
+        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+      })
+    });
+    
     // Process each measurement
     const results = await Promise.all(data.measurements.map(async (measurement) => {
       try {
@@ -133,9 +148,9 @@ exports.processHealthData = async (req, res) => {
         const hl7v2Message = createHL7v2Message(measurement);
         
         // Send to Healthcare API
-        const [response] = await healthcareClient.projects.locations.datasets.hl7V2Stores.messages.create({
+        const response = await healthcare.projects.locations.datasets.hl7V2Stores.messages.create({
           parent,
-          body: {
+          requestBody: {
             message: {
               data: Buffer.from(hl7v2Message).toString('base64')
             }
@@ -146,7 +161,7 @@ exports.processHealthData = async (req, res) => {
         return {
           id: measurement.id || 'unknown',
           success: true,
-          messageId: response.name
+          messageId: response.data.name
         };
       } catch (err) {
         console.error('Error processing measurement:', err);

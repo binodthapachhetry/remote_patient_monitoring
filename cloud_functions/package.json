@@ -13,3 +13,12 @@
   "license": "UNLICENSED",
   "private": true
 }
+{
+  "name": "test-hl7-function",
+  "version": "1.0.0",
+  "description": "Test function for HL7v2 data",
+  "main": "index.js",
+  "dependencies": {
+    "googleapis": "^110.0.0"
+  }
+}
