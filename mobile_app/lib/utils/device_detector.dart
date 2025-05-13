@@ -3,6 +3,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../sensors/weight_adapter.dart';
 import '../sensors/blood_pressure_adapter.dart';
+import '../sensors/glucose_adapter.dart';
 import '../sensors/sensor_adapter.dart';
 import '../models/physio_sample.dart';
 
@@ -44,8 +45,15 @@ class DeviceDetector {
         s.uuid.toString().toUpperCase().contains('636F6D2E') || // Custom BP service
         s.uuid.toString().toUpperCase().contains('1800')); // Standard BP service 0x1810
       
+      // Check for glucose monitor service
+      final hasGlucoseService = services.any((s) =>
+        s.uuid.toString().toUpperCase().contains('1808') || // Standard Glucose service 0x1808
+        s.uuid.toString().toUpperCase().contains('F8083532') || // Custom glucose service
+        s.uuid.toString().toUpperCase().contains('1808')); // Standard Glucose service (duplicate check)
+      
       debugPrint('>>> Has weight service: $hasWeightService');
       debugPrint('>>> Has blood pressure service: $hasBloodPressureService');
+      debugPrint('>>> Has glucose service: $hasGlucoseService');
       
       if (hasWeightService) {
         // Create weight adapter for weight scale
@@ -75,6 +83,25 @@ class DeviceDetector {
         
         // Automatically trigger data download to retrieve stored measurements
         debugPrint('>>> Automatically requesting stored readings from blood pressure device');
+        await Future.delayed(const Duration(milliseconds: 500)); // Short delay for stability
+        await adapter.requestDataDownload();
+        
+        return adapter;
+        
+      } else if (hasGlucoseService) {
+        // Create glucose adapter for glucose monitor
+        debugPrint('>>> Creating glucose adapter for device: ${device.remoteId.str}');
+        final adapter = GlucoseAdapter(
+          participantId: participantId,
+          deviceId: device.remoteId.str,
+        );
+        
+        debugPrint('>>> Binding glucose adapter to device...');
+        await adapter.bind(device);
+        debugPrint('>>> Glucose adapter bound successfully');
+        
+        // Automatically trigger data download to retrieve stored measurements
+        debugPrint('>>> Automatically requesting stored readings from glucose device');
         await Future.delayed(const Duration(milliseconds: 500)); // Short delay for stability
         await adapter.requestDataDownload();
         
