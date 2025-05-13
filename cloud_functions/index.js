@@ -1,7 +1,10 @@
 /**
- * Cloud Function to receive health measurements from mobile app and forward them to the
+ * Cloud Run Function (2nd gen) to receive health measurements from mobile app and forward them to the
  * Healthcare API as HL7v2 messages.
- *
+ * 
+ * DEPLOYMENT NOTE: Deploy using 'gcloud functions deploy' with --gen2 flag
+ * List deployed functions with: 'gcloud functions list --gen2'
+ * 
  * @param {!express:Request} req HTTP request context.
  * @param {!express:Response} res HTTP response context.
  */

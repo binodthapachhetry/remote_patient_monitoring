@@ -1,0 +1,49 @@
+# Cloud Run Functions (2nd gen) configuration
+# Deploy using: gcloud functions deploy [FUNCTION_NAME] --gen2 --source=. --config=deploy.yaml
+
+# Common configuration for all functions
+env_variables:
+  PROJECT_ID: ${PROJECT_ID}
+  LOCATION: us-central1
+  DATASET_ID: health-dataset
+  HL7V2_STORE_ID: test-hl7v2-store
+
+functions:
+  - name: receiveHealthData
+    # HTTP function configuration
+    trigger:
+      http: {}
+    entryPoint: receiveHealthData
+    runtime: nodejs16
+    memory: 256Mi
+    labels:
+      deployment-tool: cloud-functions-deploy
+
+  - name: processHealthData
+    # HTTP function configuration
+    trigger:
+      http: {}
+    entryPoint: processHealthData
+    runtime: nodejs16
+    memory: 256Mi
+    labels:
+      deployment-tool: cloud-functions-deploy
+
+  - name: helloPubSub
+    # PubSub triggered function configuration
+    trigger:
+      eventType: google.cloud.pubsub.topic.v1.messagePublished
+      eventFilters:
+        resource: projects/${PROJECT_ID}/topics/health-measurements
+      retry: true
+    entryPoint: helloPubSub
+    runtime: nodejs16
+    memory: 256Mi
+    labels:
+      deployment-tool: cloud-functions-deploy
+
+# Deployment Instructions:
+# 1. Set your project ID in environment: export PROJECT_ID=$(gcloud config get-value project)
+# 2. Deploy all functions: gcloud functions deploy --gen2 --source=. --config=deploy.yaml
+# 3. List deployed functions: gcloud functions list --gen2
+# 4. Get function details: gcloud run services describe receiveHealthData
