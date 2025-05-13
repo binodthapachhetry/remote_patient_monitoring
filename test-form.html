@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Cloud Function</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        textarea { width: 100%; height: 300px; margin: 10px 0; }
+        button { padding: 10px 20px; background: #4285f4; color: white; border: none; cursor: pointer; }
+        #response { padding: 10px; background: #f0f0f0; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Test Health Data Endpoint</h1>
+    <textarea id="payload">{
+  "measurements": [
+    {
+      "id": "test-measurement-1",
+      "participantId": "test-participant-001",
+      "deviceId": "KN-550BT-001",
+      "type": "blood_pressure_systolic",
+      "value": 120.0,
+      "unit": "mmHg",
+      "timestamp": "2025-05-13T16:45:00.000Z"
+    },
+    {
+      "id": "test-measurement-2",
+      "participantId": "test-participant-001",
+      "deviceId": "KN-550BT-001",
+      "type": "blood_pressure_diastolic",
+      "value": 80.0,
+      "unit": "mmHg",
+      "timestamp": "2025-05-13T16:45:00.000Z"
+    }
+  ]
+}</textarea>
+    <button onclick="sendRequest()">Send Request</button>
+    <h2>Response:</h2>
+    <div id="response"></div>
+
+    <script>
+        async function sendRequest() {
+            const payload = document.getElementById('payload').value;
+            const responseDiv = document.getElementById('response');
+            
+            responseDiv.textContent = 'Sending request...';
+            
+            try {
+                const response = await fetch('https://receive-health-data-1009074952654.us-central1.run.app/processHealthData', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: payload
+                });
+                
+                const result = await response.text();
+                responseDiv.textContent = `Status: ${response.status}\n\n${result}`;
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
