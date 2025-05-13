@@ -8,10 +8,10 @@
 const {HealthcareClient} = require('@google-cloud/healthcare');
 const healthcareClient = new HealthcareClient();
 
-exports.helloPubSub = async (req, res) => {
+exports.processHealthData = async (req, res) => {
   // Set CORS headers for preflight requests
   res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
@@ -39,14 +39,16 @@ exports.helloPubSub = async (req, res) => {
     // Get environment variables
     const projectId = process.env.PROJECT_ID;
     const location = process.env.LOCATION || 'us-central1';
-    const datasetId = process.env.DATASET_ID;
-    const hl7v2StoreId = process.env.HL7V2_STORE_ID;
+    const datasetId = process.env.DATASET_ID || 'health-dataset';
+    const hl7v2StoreId = process.env.HL7V2_STORE_ID || 'test-hl7v2-store';
 
-    if (!projectId || !datasetId || !hl7v2StoreId) {
-      console.error('Missing required environment variables');
-      res.status(500).send('Server configuration error');
+    if (!projectId) {
+      console.error('Missing PROJECT_ID environment variable');
+      res.status(500).send('Server configuration error: Missing PROJECT_ID');
       return;
     }
+
+    console.log(`Using project: ${projectId}, dataset: ${datasetId}, store: ${hl7v2StoreId}`);
 
     // Set up the parent resource path
     const parent = `projects/${projectId}/locations/${location}/datasets/${datasetId}/hl7V2Stores/${hl7v2StoreId}`;
@@ -71,8 +73,10 @@ exports.helloPubSub = async (req, res) => {
         // Send to Healthcare API
         const [response] = await healthcareClient.projects.locations.datasets.hl7V2Stores.messages.create({
           parent,
-          data: {
-            message: Buffer.from(hl7v2Message).toString('base64')
+          body: {
+            message: {
+              data: Buffer.from(hl7v2Message).toString('base64')
+            }
           }
         });
 
