@@ -19,7 +19,7 @@ class DatabaseHelper {
   static const String dbName = 'health_data.db';
   
   /// Database version - increment when schema changes
-  static const int dbVersion = 1;
+  static const int dbVersion = 2;
   
   /// Table names
   static const String tableHealthMeasurements = 'health_measurements';
@@ -79,7 +79,10 @@ class DatabaseHelper {
         lastAttempt INTEGER,
         retryCount INTEGER DEFAULT 0,
         sentAt INTEGER,
-        errorMessage TEXT
+        errorMessage TEXT,
+        size_bytes INTEGER DEFAULT 0,
+        priority TEXT DEFAULT 'normal',
+        pubsub_message_id TEXT
       )
     ''');
     
@@ -101,7 +104,21 @@ class DatabaseHelper {
     
     // Handle incremental upgrades as schema evolves
     if (oldVersion < 2) {
-      // Add future schema changes here
+      // Add Pub/Sub related columns to sync_batches table
+      await db.execute('''
+        ALTER TABLE $tableSyncBatches 
+        ADD COLUMN size_bytes INTEGER DEFAULT 0
+      ''');
+      
+      await db.execute('''
+        ALTER TABLE $tableSyncBatches 
+        ADD COLUMN priority TEXT DEFAULT 'normal'
+      ''');
+      
+      await db.execute('''
+        ALTER TABLE $tableSyncBatches 
+        ADD COLUMN pubsub_message_id TEXT
+      ''');
     }
   }
   
@@ -218,6 +235,8 @@ class DatabaseHelper {
         'createdAt': DateTime.now().millisecondsSinceEpoch,
         'messageCount': messageCount,
         'status': 'pending',
+        'size_bytes': 0, // Will be updated when measurements are added
+        'priority': 'normal', // Default priority
         'retryCount': 0,
       },
     );
@@ -229,7 +248,7 @@ class DatabaseHelper {
   Future<void> updateBatchStatus(
     String batchId, 
     String status, 
-    {String? errorMessage}
+    {String? errorMessage, String? pubsubMessageId}
   ) async {
     final db = await database;
     
@@ -244,6 +263,10 @@ class DatabaseHelper {
     
     if (errorMessage != null) {
       values['errorMessage'] = errorMessage;
+    }
+    
+    if (pubsubMessageId != null) {
+      values['pubsub_message_id'] = pubsubMessageId;
     }
     
     await db.update(

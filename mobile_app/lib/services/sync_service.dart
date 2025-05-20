@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -319,7 +320,7 @@ class SyncService {
       }
       
       // Create the message payload
-      final payload = {
+      final messageData = {
         'sendingApplication': 'MobileHealthMVP',
         'messageSegments': hl7Segments,
         'batchId': batchId,
@@ -329,12 +330,40 @@ class SyncService {
         'timestamp': DateTime.now().toIso8601String(),
       };
       
+      // Encode for Pub/Sub
+      final encodedData = base64.encode(utf8.encode(jsonEncode(messageData)));
+      
+      // Create Pub/Sub formatted payload
+      final payload = {
+        'messages': [
+          {
+            'data': encodedData,
+            'attributes': {
+              'batch_id': batchId,
+              'participant_id': _userManager.participantId ?? 'unknown',
+              'device_count': _countUniqueDevices(measurements).toString(),
+              'message_count': measurements.length.toString(),
+              'hl7_version': '2.5',
+              'message_type': 'ORU_R01',
+            }
+          }
+        ]
+      };
+      
       // Send to the cloud service
-      final success = await _sendToCloud(payload);
+      final success = await _sendToCloud(payload, batchId);
       
       if (success) {
         // Mark batch as sent
-        await _db.updateBatchStatus(batchId, 'sent');
+        final responseData = json.decode(response.body);
+        final messageIds = responseData['messageIds'] ?? [];
+        final pubsubMessageId = messageIds.isNotEmpty ? messageIds[0] : null;
+        
+        await _db.updateBatchStatus(
+          batchId, 
+          'sent', 
+          pubsubMessageId: pubsubMessageId
+        );
         
         // Mark all measurements in batch as sent
         for (final measurement in measurements) {
@@ -373,15 +402,15 @@ class SyncService {
   }
   
   /// Send to cloud service
-  Future<bool> _sendToCloud(Map<String, dynamic> payload) async {
+  Future<bool> _sendToCloud(Map<String, dynamic> payload, String batchId) async {
     try {
-      // Use the GCP Cloud Function endpoint
-      const url = 'https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net/receiveHealthData';
+      // Use the GCP Cloud Run endpoint that processes Pub/Sub messages
+      const url = 'https://health-data-ingest-abcdef-uc.a.run.app';
       
       // Get Firebase auth token
       final token = await _getAuthToken();
       
-      debugPrint('>>> Sending payload to cloud: ${json.encode(payload)}');
+      debugPrint('>>> Sending Pub/Sub payload to cloud for batch: $batchId');
       
       final response = await http.post(
         Uri.parse(url),
@@ -397,7 +426,8 @@ class SyncService {
       
       if (success) {
         final responseData = json.decode(response.body);
-        debugPrint('>>> Message ID: ${responseData['messageId']}');
+        final messageIds = responseData['messageIds'] ?? [];
+        debugPrint('>>> Published ${messageIds.length} Pub/Sub messages');
       } else {
         debugPrint('!!! Error response: ${response.body}');
       }
