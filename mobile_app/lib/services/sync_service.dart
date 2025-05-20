@@ -442,7 +442,11 @@ class SyncService {
       return result;
     } catch (e) {
       debugPrint('!!! Error sending to cloud: $e');
-      return false;
+      return {
+        'success': false,
+        'messageIds': <String>[],
+        'error': e.toString()
+      };
     }
   }
   
