@@ -293,7 +293,7 @@ class DatabaseHelper {
       tableSyncBatches,
       where: 'status = ?',
       whereArgs: ['pending'],
-      orderBy: 'createdAt ASC',
+      orderBy: 'priority DESC, createdAt ASC', // Process high priority batches first
     );
   }
   
