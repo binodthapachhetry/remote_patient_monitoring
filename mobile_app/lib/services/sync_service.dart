@@ -984,13 +984,33 @@ class SyncStatus {
           'batch_id': batchId,
           'error_type': 'rate_limit_exceeded',
           'timestamp': DateTime.now().toIso8601String(),
+          'retry_priority': 'high', // Rate limited requests get high priority
+          'original_region': await _getUserRegionPreference(),
         },
       };
       
       // Process as if it came from the DLQ
-      await dlqHandler.processFailedMessage(dlqMessage);
+      final processed = await dlqHandler.processFailedMessage(dlqMessage);
       
-      debugPrint('>>> Rate-limited request handled by DLQ handler');
+      if (processed) {
+        debugPrint('>>> Rate-limited request handled by DLQ handler');
+        
+        // Update batch status to reflect DLQ handling
+        await _db.updateBatchStatus(
+          batchId, 
+          'retry_scheduled',
+          errorMessage: 'Rate limit exceeded, scheduled for retry'
+        );
+        
+        // Log for audit trail
+        await _logAuditEvent('rate_limit_retry_scheduled', {
+          'batch_id': batchId,
+          'message_count': payload['messages']?.length ?? 0,
+          'retry_mechanism': 'dlq_handler',
+        });
+      } else {
+        debugPrint('!!! DLQ handler failed to process rate-limited request');
+      }
     } catch (e) {
       debugPrint('!!! Error handling rate-limited request: $e');
     }

@@ -282,7 +282,7 @@ class DatabaseHelper {
     );
     
     // If error message exists, increment the retry counter separately with raw SQL
-    if (errorMessage != null) {
+    if (errorMessage != null && status != 'retry_scheduled' && status != 'retrying') {
       await db.rawUpdate(
         'UPDATE $tableSyncBatches SET retryCount = retryCount + 1 WHERE id = ?',
         [batchId]
