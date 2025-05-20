@@ -351,13 +351,13 @@ class SyncService {
       };
       
       // Send to the cloud service
-      final success = await _sendToCloud(payload, batchId);
+      final result = await _sendToCloud(payload, batchId);
+      final success = result['success'] as bool;
       
       if (success) {
         // Mark batch as sent
-        final responseData = json.decode(response.body);
-        final messageIds = responseData['messageIds'] ?? [];
-        final pubsubMessageId = messageIds.isNotEmpty ? messageIds[0] : null;
+        final messageIds = result['messageIds'] as List<dynamic>;
+        final pubsubMessageId = messageIds.isNotEmpty ? messageIds[0] as String : null;
         
         await _db.updateBatchStatus(
           batchId, 
@@ -402,7 +402,7 @@ class SyncService {
   }
   
   /// Send to cloud service
-  Future<bool> _sendToCloud(Map<String, dynamic> payload, String batchId) async {
+  Future<Map<String, dynamic>> _sendToCloud(Map<String, dynamic> payload, String batchId) async {
     try {
       // Use the GCP Cloud Run endpoint that processes Pub/Sub messages
       const url = 'https://health-data-ingest-abcdef-uc.a.run.app';
@@ -424,15 +424,22 @@ class SyncService {
       debugPrint('>>> Cloud response: ${response.statusCode}');
       final success = response.statusCode >= 200 && response.statusCode < 300;
       
+      Map<String, dynamic> result = {
+        'success': success,
+        'messageIds': <String>[],
+      };
+      
       if (success) {
         final responseData = json.decode(response.body);
         final messageIds = responseData['messageIds'] ?? [];
+        result['messageIds'] = messageIds;
         debugPrint('>>> Published ${messageIds.length} Pub/Sub messages');
       } else {
         debugPrint('!!! Error response: ${response.body}');
+        result['error'] = response.body;
       }
       
-      return success;
+      return result;
     } catch (e) {
       debugPrint('!!! Error sending to cloud: $e');
       return false;
