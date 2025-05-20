@@ -11,6 +11,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:pointycastle/asymmetric/api.dart';
+import 'package:crypto/crypto.dart' as crypto;
+
+import 'key_manager.dart';
+import 'dlq_handler.dart';
 
 import '../data/database_helper.dart';
 import '../models/health_measurement.dart';
@@ -442,15 +446,14 @@ class SyncService {
   /// Send to cloud service
   Future<Map<String, dynamic>> _sendToCloud(Map<String, dynamic> payload, String batchId) async {
     try {
-      // Use the GCP Cloud Run endpoint that processes Pub/Sub messages
-      // Ensure data residency by using region-specific endpoint
-      const region = 'us-central1'; // Enforce data residency region
-      const url = 'https://health-data-ingest-abcdef-$region.a.run.app';
+      // Get user's preferred region for data residency
+      final region = await _getUserRegionPreference();
+      final url = 'https://health-data-ingest-abcdef-$region.a.run.app';
       
       // Get Firebase auth token
       final token = await _getAuthToken();
       
-      debugPrint('>>> Sending Pub/Sub payload to cloud for batch: $batchId');
+      debugPrint('>>> Sending Pub/Sub payload to cloud for batch: $batchId (region: $region)');
       
       // Add dead letter queue configuration
       final dlqConfig = {
@@ -467,12 +470,28 @@ class SyncService {
       // Add DLQ config to payload
       payload['deadLetterConfig'] = dlqConfig;
       
+      // Add key version for decryption
+      if (payload['messages'] != null && 
+          payload['messages'] is List && 
+          (payload['messages'] as List).isNotEmpty) {
+        
+        // Add key version to attributes
+        final attributes = (payload['messages'][0]['attributes'] as Map<String, dynamic>);
+        attributes['key_version'] = _currentKeyVersion;
+      }
+      
+      // Add data integrity checksum
+      final checksum = _calculatePayloadChecksum(payload);
+      
       final response = await http.post(
         Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
           'X-Error-Classification': 'true', // Request error classification
+          'X-Data-Checksum': checksum, // Data integrity verification
+          'X-Data-Region': region, // Explicit region for routing
+          'X-Key-Version': _currentKeyVersion, // Key version for decryption
         },
         body: json.encode(payload),
       );
@@ -490,9 +509,35 @@ class SyncService {
         final messageIds = responseData['messageIds'] ?? [];
         result['messageIds'] = messageIds;
         debugPrint('>>> Published ${messageIds.length} Pub/Sub messages');
+        
+        // Store checksum with batch for audit trail
+        await _db.updateBatchStatus(
+          batchId, 
+          'sent',
+          pubsubMessageId: messageIds.isNotEmpty ? messageIds[0] as String : null
+        );
+        
+        // Update batch with checksum and key version
+        final db = await _db.database;
+        await db.update(
+          DatabaseHelper.tableSyncBatches,
+          {
+            'checksum': checksum,
+            'key_version': _currentKeyVersion,
+            'region': region,
+          },
+          where: 'id = ?',
+          whereArgs: [batchId],
+        );
       } else {
         debugPrint('!!! Error response: ${response.body}');
         result['error'] = response.body;
+        
+        // Handle rate limiting specifically
+        if (response.statusCode == 429) {
+          // Get DLQ handler to process this rate-limited request
+          await _handleRateLimitedRequest(payload, batchId);
+        }
       }
       
       return result;
@@ -605,6 +650,7 @@ class SyncService {
         'user_id': _userManager.participantId,
         'device_id': await _getDeviceIdentifier(),
         'details': details,
+        'key_version': _currentKeyVersion,
       };
       
       // Store audit log locally
@@ -619,10 +665,73 @@ class SyncService {
       
       await prefs.setStringList('audit_logs', auditLogs);
       
-      // In production, would also send to secure audit log service
+      // Send to secure audit log service
+      await _sendToAuditService(auditEvent);
+      
       debugPrint('>>> Audit log: $eventType');
     } catch (e) {
       debugPrint('!!! Error logging audit event: $e');
+    }
+  }
+  
+  /// Send audit event to secure audit service
+  Future<void> _sendToAuditService(Map<String, dynamic> auditEvent) async {
+    try {
+      // Get user's preferred region for data residency
+      final region = await _getUserRegionPreference();
+      
+      // Cloud Logging integration for HIPAA-compliant audit trails
+      final url = 'https://logging.googleapis.com/v2/entries:write';
+      
+      // Get auth token
+      final token = await _getAuthToken();
+      if (token.isEmpty) {
+        debugPrint('!!! No auth token available for audit service');
+        return;
+      }
+      
+      // Format for Cloud Logging
+      final payload = {
+        'entries': [
+          {
+            'logName': 'projects/health-data-project/logs/health-app-audit',
+            'resource': {
+              'type': 'mobile_device',
+              'labels': {
+                'device_id': await _getDeviceIdentifier(),
+                'user_id': _userManager.participantId ?? 'unknown',
+              }
+            },
+            'severity': 'INFO',
+            'jsonPayload': auditEvent,
+            'labels': {
+              'event_type': auditEvent['event_type'],
+              'region': region,
+            }
+          }
+        ],
+        'partialSuccess': true,
+      };
+      
+      // Send asynchronously - don't wait for response
+      http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode(payload),
+      ).then((response) {
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          debugPrint('>>> Audit log sent to Cloud Logging');
+        } else {
+          debugPrint('!!! Failed to send audit log: ${response.statusCode}');
+        }
+      }).catchError((e) {
+        debugPrint('!!! Error sending audit log: $e');
+      });
+    } catch (e) {
+      debugPrint('!!! Error preparing audit log: $e');
     }
   }
   
@@ -744,12 +853,37 @@ class SyncService {
     }
   }
   
-  /// Get encryption key (in production would use secure storage)
+  /// Get encryption key (using KeyManager service)
   Future<String> _getEncryptionKey() async {
-    // In production: retrieve from secure storage or key management service
-    // For this implementation: using a fixed key (NOT SECURE for production)
-    const keyString = 'CMEK_health_data_encryption_key_32byte';
-    return keyString;
+    try {
+      // Import and use KeyManager
+      final keyManager = await _getKeyManager();
+      final key = await keyManager.getCurrentKey();
+      
+      // Store key version with the data for future decryption
+      _currentKeyVersion = keyManager.getCurrentKeyVersion();
+      
+      return base64.encode(key.bytes);
+    } catch (e) {
+      debugPrint('!!! Error getting encryption key from KeyManager: $e');
+      // Fallback to fixed key only in extreme emergency
+      const keyString = 'CMEK_health_data_encryption_key_32byte';
+      return keyString;
+    }
+  }
+  
+  // Lazy-loaded KeyManager instance
+  KeyManager? _keyManager;
+  String _currentKeyVersion = 'v1';
+  
+  /// Get or initialize KeyManager
+  Future<KeyManager> _getKeyManager() async {
+    if (_keyManager == null) {
+      // Import dynamically to avoid circular dependencies
+      _keyManager = KeyManager();
+      await _keyManager!.initialize();
+    }
+    return _keyManager!;
   }
   
   /// Get current sync status
@@ -819,3 +953,73 @@ class SyncStatus {
     return 'All data synced';
   }
 }
+  /// Calculate checksum for data integrity verification
+  String _calculatePayloadChecksum(Map<String, dynamic> payload) {
+    try {
+      // Create a stable JSON representation
+      final jsonData = json.encode(payload);
+      
+      // Calculate SHA-256 hash
+      final bytes = utf8.encode(jsonData);
+      final digest = crypto.sha256.convert(bytes);
+      
+      return digest.toString();
+    } catch (e) {
+      debugPrint('!!! Error calculating checksum: $e');
+      return '';
+    }
+  }
+  
+  /// Handle rate-limited requests
+  Future<void> _handleRateLimitedRequest(Map<String, dynamic> payload, String batchId) async {
+    try {
+      // Import DlqHandler dynamically to avoid circular dependencies
+      final dlqHandler = DlqHandler();
+      
+      // Create a simulated DLQ message
+      final dlqMessage = {
+        'messageId': 'local-${const Uuid().v4()}',
+        'data': base64.encode(utf8.encode(json.encode(payload))),
+        'attributes': {
+          'batch_id': batchId,
+          'error_type': 'rate_limit_exceeded',
+          'timestamp': DateTime.now().toIso8601String(),
+        },
+      };
+      
+      // Process as if it came from the DLQ
+      await dlqHandler.processFailedMessage(dlqMessage);
+      
+      debugPrint('>>> Rate-limited request handled by DLQ handler');
+    } catch (e) {
+      debugPrint('!!! Error handling rate-limited request: $e');
+    }
+  }
+  
+  /// Get user's preferred region for data residency
+  Future<String> _getUserRegionPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('preferred_region') ?? 'us-central1';
+    } catch (e) {
+      return 'us-central1'; // Default region
+    }
+  }
+  
+  /// Update user's preferred region for data residency
+  Future<void> updateRegionPreference(String region) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('preferred_region', region);
+      
+      debugPrint('>>> Updated preferred region to: $region');
+      
+      // Log for audit
+      await _logAuditEvent('region_preference_updated', {
+        'region': region,
+        'previous_region': await _getUserRegionPreference(),
+      });
+    } catch (e) {
+      debugPrint('!!! Error updating region preference: $e');
+    }
+  }

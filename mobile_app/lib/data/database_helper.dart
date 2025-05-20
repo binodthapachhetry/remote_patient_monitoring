@@ -65,7 +65,9 @@ class DatabaseHelper {
         batchId TEXT,
         retryCount INTEGER DEFAULT 0,
         lastSyncAttempt INTEGER,
-        metadata TEXT
+        metadata TEXT,
+        checksum TEXT,
+        key_version TEXT
       )
     ''');
     
@@ -82,7 +84,10 @@ class DatabaseHelper {
         errorMessage TEXT,
         size_bytes INTEGER DEFAULT 0,
         priority TEXT DEFAULT 'normal',
-        pubsub_message_id TEXT
+        pubsub_message_id TEXT,
+        region TEXT DEFAULT 'us-central1',
+        checksum TEXT,
+        key_version TEXT
       )
     ''');
     
