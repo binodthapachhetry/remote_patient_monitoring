@@ -360,4 +360,33 @@ class DatabaseHelper {
     debugPrint('Purged $deletedCount old synced measurements');
     return deletedCount;
   }
+  
+  /// GDPR-compliant data deletion for a specific user
+  Future<int> deleteUserData(String participantId) async {
+    final db = await database;
+    int deletedCount = 0;
+    
+    await db.transaction((txn) async {
+      // Delete all user measurements
+      deletedCount = await txn.delete(
+        tableHealthMeasurements,
+        where: 'participantId = ?',
+        whereArgs: [participantId]
+      );
+      
+      // Anonymize batches but keep for audit trail
+      await txn.rawUpdate('''
+        UPDATE $tableSyncBatches 
+        SET participantId = 'DELETED_USER'
+        WHERE id IN (
+          SELECT DISTINCT batchId 
+          FROM $tableHealthMeasurements 
+          WHERE participantId = ?
+        )
+      ''', [participantId]);
+    });
+    
+    debugPrint('GDPR deletion: Removed $deletedCount measurements for user $participantId');
+    return deletedCount;
+  }
 }

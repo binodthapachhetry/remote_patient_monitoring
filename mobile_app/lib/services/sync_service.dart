@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
@@ -921,13 +922,12 @@ class SyncService {
       } catch (recoveryError) {
         debugPrint('!!! Recovery attempt failed: $recoveryError');
         
-        // Fallback to fixed key only in extreme emergency
-        // This is a last resort and represents a security risk
-        const keyString = 'CMEK_health_data_encryption_key_32byte';
+        // Attempt to retrieve emergency key from secure storage
+        final keyString = await _getEmergencyKeyFromSecureStorage();
         
         // Log critical security incident
         await _logAuditEvent('critical_security_incident', {
-          'type': 'using_fallback_key',
+          'type': 'using_emergency_key',
           'reason': 'Key retrieval failed after recovery attempt',
           'timestamp': DateTime.now().toIso8601String(),
           'severity': 'critical',
@@ -935,6 +935,64 @@ class SyncService {
         
         return keyString;
       }
+    }
+  }
+  
+  /// Retrieve emergency key from secure platform storage
+  Future<String> _getEmergencyKeyFromSecureStorage() async {
+    try {
+      // Import platform-specific secure storage
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        // Use Android-specific secure storage
+        final secureStorage = FlutterSecureStorage();
+        final encryptedKey = await secureStorage.read(key: 'emergency_encryption_key');
+        
+        if (encryptedKey == null) {
+          throw Exception('Emergency key not found in secure storage');
+        }
+        
+        // Log access to emergency key
+        await _logAuditEvent('emergency_key_accessed', {
+          'platform': 'android',
+          'timestamp': DateTime.now().toIso8601String(),
+          'reason': 'Primary key retrieval failure',
+        });
+        
+        return encryptedKey;
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        // Use iOS-specific keychain
+        final secureStorage = FlutterSecureStorage();
+        final encryptedKey = await secureStorage.read(key: 'emergency_encryption_key');
+        
+        if (encryptedKey == null) {
+          throw Exception('Emergency key not found in secure storage');
+        }
+        
+        // Log access to emergency key
+        await _logAuditEvent('emergency_key_accessed', {
+          'platform': 'ios',
+          'timestamp': DateTime.now().toIso8601String(),
+          'reason': 'Primary key retrieval failure',
+        });
+        
+        return encryptedKey;
+      }
+      
+      // Unsupported platform
+      throw Exception('Unsupported platform for secure storage');
+    } catch (e) {
+      debugPrint('!!! Critical: Emergency key retrieval failed: $e');
+      
+      // Log security lockdown
+      await _logAuditEvent('security_lockdown', {
+        'reason': 'Failed all key retrieval methods',
+        'error': e.toString(),
+        'timestamp': DateTime.now().toIso8601String(),
+        'severity': 'critical',
+      });
+      
+      // Throw exception to prevent data processing without encryption
+      throw Exception('Security lockdown - no valid encryption keys available');
     }
   }
   
