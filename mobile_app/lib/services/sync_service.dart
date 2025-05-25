@@ -12,6 +12,8 @@ import 'package:http/http.dart' as http;
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:pointycastle/asymmetric/api.dart';
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:googleapis/pubsub/v1.dart' as pubsub;
+import 'package:googleapis_auth/auth_io.dart';
 
 import 'key_manager.dart';
 import 'dlq_handler.dart';
@@ -461,34 +463,32 @@ class SyncService {
     }
   }
   
-  /// Send to cloud service
+  /// Send directly to Pub/Sub service
   Future<Map<String, dynamic>> _sendToCloud(Map<String, dynamic> payload, String batchId) async {
     try {
       // Get user's preferred region for data residency
       final region = await _getUserRegionPreference();
-      final url = 'https://health-data-ingest-abcdef-$region.a.run.app';
       
-      // Get Firebase auth token
+      // Get Firebase auth token for authentication
       final token = await _getAuthToken();
       
-      debugPrint('>>> Sending Pub/Sub payload to cloud for batch: $batchId (region: $region)');
+      debugPrint('>>> Sending directly to Pub/Sub for batch: $batchId (region: $region)');
       
-      // Add dead letter queue configuration
-      final dlqConfig = {
-        'deadLetterPolicy': {
-          'deadLetterTopic': 'projects/health-data-project/topics/health-data-dlq',
-          'maxDeliveryAttempts': 5
-        },
-        'retryPolicy': {
-          'minimumBackoff': '10s',
-          'maximumBackoff': '600s'
-        }
-      };
+      // Create an authenticated HTTP client for Pub/Sub
+      final httpClient = http.Client();
+      final authClient = AuthenticatedClient(
+        httpClient,
+        AccessCredentials(
+          AccessToken('Bearer', token, DateTime.now().add(Duration(hours: 1))),
+          null, // No refresh token needed with Firebase token
+          ['https://www.googleapis.com/auth/pubsub']
+        )
+      );
       
-      // Add DLQ config to payload
-      payload['deadLetterConfig'] = dlqConfig;
+      // Initialize Pub/Sub API client
+      final pubsubApi = pubsub.PubsubApi(authClient);
       
-      // Add key version for decryption
+      // Add key version for decryption to attributes
       if (payload['messages'] != null && 
           payload['messages'] is List && 
           (payload['messages'] as List).isNotEmpty) {
@@ -496,66 +496,84 @@ class SyncService {
         // Add key version to attributes
         final attributes = (payload['messages'][0]['attributes'] as Map<String, dynamic>);
         attributes['key_version'] = _currentKeyVersion;
+        attributes['region'] = region;
+        
+        // Add checksum for data integrity
+        final checksum = _calculatePayloadChecksum(payload);
+        attributes['checksum'] = checksum;
       }
       
-      // Add data integrity checksum
-      final checksum = _calculatePayloadChecksum(payload);
+      // Create Pub/Sub publish request
+      final pubsubRequest = pubsub.PublishRequest();
       
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-          'X-Error-Classification': 'true', // Request error classification
-          'X-Data-Checksum': checksum, // Data integrity verification
-          'X-Data-Region': region, // Explicit region for routing
-          'X-Key-Version': _currentKeyVersion, // Key version for decryption
-        },
-        body: json.encode(payload),
+      // Convert our messages to Pub/Sub format
+      pubsubRequest.messages = [];
+      
+      for (final msg in payload['messages']) {
+        final pubsubMessage = pubsub.PubsubMessage();
+        
+        // Set message data (base64 encoded)
+        pubsubMessage.data = msg['data'];
+        
+        // Set message attributes
+        pubsubMessage.attributes = Map<String, String>.from(msg['attributes']);
+        
+        // Set ordering key for temporal consistency (using timestamp if available)
+        if (msg['attributes']['timestamp'] != null) {
+          pubsubMessage.orderingKey = msg['attributes']['timestamp'];
+        }
+        
+        pubsubRequest.messages.add(pubsubMessage);
+      }
+      
+      // Determine topic based on region
+      final topicName = 'projects/health-data-project/topics/health-data-ingest-$region';
+      
+      // Publish directly to Pub/Sub
+      final pubsubResponse = await pubsubApi.projects.topics.publish(
+        pubsubRequest,
+        topicName
       );
       
-      debugPrint('>>> Cloud response: ${response.statusCode}');
-      final success = response.statusCode >= 200 && response.statusCode < 300;
+      final messageIds = pubsubResponse.messageIds ?? [];
+      final success = messageIds.isNotEmpty;
+      
+      debugPrint('>>> Pub/Sub response: ${messageIds.length} messages published');
       
       Map<String, dynamic> result = {
         'success': success,
-        'messageIds': <String>[],
+        'messageIds': messageIds,
       };
       
       if (success) {
-        final responseData = json.decode(response.body);
-        final messageIds = responseData['messageIds'] ?? [];
-        result['messageIds'] = messageIds;
-        debugPrint('>>> Published ${messageIds.length} Pub/Sub messages');
+        debugPrint('>>> Published ${messageIds.length} Pub/Sub messages directly');
         
-        // Store checksum with batch for audit trail
+        // Store message ID with batch for audit trail
         await _db.updateBatchStatus(
           batchId, 
           'sent',
-          pubsubMessageId: messageIds.isNotEmpty ? messageIds[0] as String : null
+          pubsubMessageId: messageIds.isNotEmpty ? messageIds[0] : null
         );
         
-        // Update batch with checksum and key version
+        // Update batch with metadata
         final db = await _db.database;
         await db.update(
           DatabaseHelper.tableSyncBatches,
           {
-            'checksum': checksum,
+            'checksum': _calculatePayloadChecksum(payload),
             'key_version': _currentKeyVersion,
             'region': region,
+            'pubsub_message_id': messageIds.isNotEmpty ? messageIds[0] : null,
           },
           where: 'id = ?',
           whereArgs: [batchId],
         );
       } else {
-        debugPrint('!!! Error response: ${response.body}');
-        result['error'] = response.body;
+        debugPrint('!!! Error publishing to Pub/Sub');
+        result['error'] = 'Failed to publish to Pub/Sub';
         
-        // Handle rate limiting specifically
-        if (response.statusCode == 429) {
-          // Get DLQ handler to process this rate-limited request
-          await _handleRateLimitedRequest(payload, batchId);
-        }
+        // Handle failures by sending to Dead Letter Queue
+        await _sendToDlqTopic(payload, batchId, 'publish_failed');
       }
       
       return result;
@@ -1138,49 +1156,89 @@ class SyncStatus {
     }
   }
   
-  /// Handle rate-limited requests
-  Future<void> _handleRateLimitedRequest(Map<String, dynamic> payload, String batchId) async {
+  /// Send failed messages directly to Dead Letter Queue topic
+  Future<void> _sendToDlqTopic(Map<String, dynamic> payload, String batchId, String errorType) async {
     try {
-      // Import DlqHandler dynamically to avoid circular dependencies
-      final dlqHandler = DlqHandler();
+      // Get Firebase auth token for authentication
+      final token = await _getAuthToken();
       
-      // Create a simulated DLQ message
-      final dlqMessage = {
-        'messageId': 'local-${const Uuid().v4()}',
-        'data': base64.encode(utf8.encode(json.encode(payload))),
-        'attributes': {
-          'batch_id': batchId,
-          'error_type': 'rate_limit_exceeded',
-          'timestamp': DateTime.now().toIso8601String(),
-          'retry_priority': 'high', // Rate limited requests get high priority
-          'original_region': await _getUserRegionPreference(),
-        },
+      // Create an authenticated HTTP client for Pub/Sub
+      final httpClient = http.Client();
+      final authClient = AuthenticatedClient(
+        httpClient,
+        AccessCredentials(
+          AccessToken('Bearer', token, DateTime.now().add(Duration(hours: 1))),
+          null,
+          ['https://www.googleapis.com/auth/pubsub']
+        )
+      );
+      
+      // Initialize Pub/Sub API client
+      final pubsubApi = pubsub.PubsubApi(authClient);
+      
+      // Create DLQ message with error information
+      final dlqMessage = pubsub.PubsubMessage();
+      
+      // Encode original payload as data
+      dlqMessage.data = base64.encode(utf8.encode(json.encode(payload)));
+      
+      // Add error metadata as attributes
+      dlqMessage.attributes = {
+        'batch_id': batchId,
+        'error_type': errorType,
+        'timestamp': DateTime.now().toIso8601String(),
+        'retry_priority': 'high',
+        'original_region': await _getUserRegionPreference(),
+        'key_version': _currentKeyVersion,
       };
       
-      // Process as if it came from the DLQ
-      final processed = await dlqHandler.processFailedMessage(dlqMessage);
+      // Create publish request
+      final dlqRequest = pubsub.PublishRequest();
+      dlqRequest.messages = [dlqMessage];
       
-      if (processed) {
-        debugPrint('>>> Rate-limited request handled by DLQ handler');
+      // Publish to DLQ topic
+      final dlqTopic = 'projects/health-data-project/topics/health-data-dlq';
+      final dlqResponse = await pubsubApi.projects.topics.publish(
+        dlqRequest,
+        dlqTopic
+      );
+      
+      final success = dlqResponse.messageIds?.isNotEmpty ?? false;
+      
+      if (success) {
+        debugPrint('>>> Failed message sent to DLQ topic');
         
         // Update batch status to reflect DLQ handling
         await _db.updateBatchStatus(
           batchId, 
           'retry_scheduled',
-          errorMessage: 'Rate limit exceeded, scheduled for retry'
+          errorMessage: '$errorType, sent to DLQ'
         );
         
         // Log for audit trail
-        await _logAuditEvent('rate_limit_retry_scheduled', {
+        await _logAuditEvent('message_sent_to_dlq', {
           'batch_id': batchId,
+          'error_type': errorType,
           'message_count': payload['messages']?.length ?? 0,
-          'retry_mechanism': 'dlq_handler',
+          'dlq_message_id': dlqResponse.messageIds?[0],
         });
       } else {
-        debugPrint('!!! DLQ handler failed to process rate-limited request');
+        debugPrint('!!! Failed to send to DLQ topic');
+        
+        // Fall back to DlqHandler for local handling
+        final dlqHandler = DlqHandler();
+        await dlqHandler.storeFailedMessageLocally(payload, batchId, errorType);
       }
     } catch (e) {
-      debugPrint('!!! Error handling rate-limited request: $e');
+      debugPrint('!!! Error sending to DLQ topic: $e');
+      
+      // Fall back to local DLQ handling
+      try {
+        final dlqHandler = DlqHandler();
+        await dlqHandler.storeFailedMessageLocally(payload, batchId, 'dlq_publish_failed');
+      } catch (dlqError) {
+        debugPrint('!!! Critical: Failed to handle DLQ message locally: $dlqError');
+      }
     }
   }
   
@@ -1188,7 +1246,22 @@ class SyncStatus {
   Future<String> _getUserRegionPreference() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('preferred_region') ?? 'us-central1';
+      final region = prefs.getString('preferred_region') ?? 'us-central1';
+      
+      // Validate region is in allowed list
+      final validRegions = [
+        'us-central1',
+        'us-east1',
+        'europe-west1',
+        'asia-east1',
+        'australia-southeast1'
+      ];
+      
+      if (validRegions.contains(region)) {
+        return region;
+      } else {
+        return 'us-central1'; // Default if invalid
+      }
     } catch (e) {
       return 'us-central1'; // Default region
     }
