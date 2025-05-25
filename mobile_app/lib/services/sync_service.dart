@@ -91,9 +91,27 @@ class SyncService {
       _scheduleSyncTimer();
     }
     
+    // Initialize KeyManager
+    await _getKeyManager();
+    
+    // Schedule DLQ retry check
+    _scheduleDlqRetryCheck();
+    
     _isInitialized = true;
     _updateSyncStatus();
     debugPrint('>>> SyncService initialized: autoSync=$_autoSyncEnabled, interval=$_syncIntervalMinutes min');
+  }
+  
+  /// Schedule periodic check of DLQ retry queue
+  void _scheduleDlqRetryCheck() {
+    Timer.periodic(const Duration(minutes: 15), (_) async {
+      try {
+        final dlqHandler = DlqHandler();
+        await dlqHandler.checkRetryQueue();
+      } catch (e) {
+        debugPrint('!!! Error checking DLQ retry queue: $e');
+      }
+    });
   }
   
   /// Handle connectivity changes
@@ -866,9 +884,39 @@ class SyncService {
       return base64.encode(key.bytes);
     } catch (e) {
       debugPrint('!!! Error getting encryption key from KeyManager: $e');
-      // Fallback to fixed key only in extreme emergency
-      const keyString = 'CMEK_health_data_encryption_key_32byte';
-      return keyString;
+      
+      // Log security incident
+      await _logAuditEvent('security_incident', {
+        'type': 'key_retrieval_failure',
+        'error': e.toString(),
+        'timestamp': DateTime.now().toIso8601String(),
+        'severity': 'high',
+      });
+      
+      // Try to recover by initializing KeyManager again
+      try {
+        _keyManager = null;
+        final keyManager = await _getKeyManager();
+        final key = await keyManager.getCurrentKey();
+        _currentKeyVersion = keyManager.getCurrentKeyVersion();
+        return base64.encode(key.bytes);
+      } catch (recoveryError) {
+        debugPrint('!!! Recovery attempt failed: $recoveryError');
+        
+        // Fallback to fixed key only in extreme emergency
+        // This is a last resort and represents a security risk
+        const keyString = 'CMEK_health_data_encryption_key_32byte';
+        
+        // Log critical security incident
+        await _logAuditEvent('critical_security_incident', {
+          'type': 'using_fallback_key',
+          'reason': 'Key retrieval failed after recovery attempt',
+          'timestamp': DateTime.now().toIso8601String(),
+          'severity': 'critical',
+        });
+        
+        return keyString;
+      }
     }
   }
   
@@ -882,8 +930,128 @@ class SyncService {
       // Import dynamically to avoid circular dependencies
       _keyManager = KeyManager();
       await _keyManager!.initialize();
+      
+      // Schedule key rotation check every 24 hours
+      Timer.periodic(const Duration(hours: 24), (_) async {
+        try {
+          // Check if key rotation is needed
+          final prefs = await SharedPreferences.getInstance();
+          final lastCheck = prefs.getInt('key_rotation_last_check') ?? 0;
+          final now = DateTime.now().millisecondsSinceEpoch;
+          
+          // If last check was more than 7 days ago
+          if (now - lastCheck > const Duration(days: 7).inMilliseconds) {
+            debugPrint('>>> Checking if key rotation is needed');
+            
+            // Rotate keys if needed
+            if (await _shouldRotateKeys()) {
+              await _keyManager!.rotateKeys();
+              
+              // Re-encrypt pending data with new key
+              await _reEncryptPendingData();
+            }
+            
+            // Update last check time
+            await prefs.setInt('key_rotation_last_check', now);
+          }
+        } catch (e) {
+          debugPrint('!!! Error in scheduled key rotation check: $e');
+        }
+      });
     }
     return _keyManager!;
+  }
+  
+  /// Check if keys should be rotated
+  Future<bool> _shouldRotateKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastRotation = prefs.getInt('key_last_rotation') ?? 0;
+      
+      // If no rotation has happened yet, or it's been more than 90 days
+      if (lastRotation == 0 || 
+          DateTime.now().difference(
+            DateTime.fromMillisecondsSinceEpoch(lastRotation)
+          ) > const Duration(days: 90)) {
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      debugPrint('!!! Error checking if keys should be rotated: $e');
+      return false;
+    }
+  }
+  
+  /// Re-encrypt pending data with new key
+  Future<void> _reEncryptPendingData() async {
+    try {
+      debugPrint('>>> Re-encrypting pending data with new key');
+      
+      // Get all pending measurements
+      final db = await _db.database;
+      final pendingBatches = await db.query(
+        DatabaseHelper.tableSyncBatches,
+        where: 'status != ?',
+        whereArgs: ['sent'],
+      );
+      
+      if (pendingBatches.isEmpty) {
+        debugPrint('>>> No pending batches to re-encrypt');
+        return;
+      }
+      
+      // Get KeyManager
+      final keyManager = await _getKeyManager();
+      final oldKeyVersion = _currentKeyVersion;
+      final newKeyVersion = keyManager.getCurrentKeyVersion();
+      
+      // If versions are the same, no need to re-encrypt
+      if (oldKeyVersion == newKeyVersion) {
+        debugPrint('>>> Key version unchanged, no need to re-encrypt');
+        return;
+      }
+      
+      debugPrint('>>> Re-encrypting ${pendingBatches.length} batches from $oldKeyVersion to $newKeyVersion');
+      
+      // Update key version for all pending batches
+      for (final batch in pendingBatches) {
+        final batchId = batch['id'] as String;
+        
+        // Update batch key version
+        await db.update(
+          DatabaseHelper.tableSyncBatches,
+          {'key_version': newKeyVersion},
+          where: 'id = ?',
+          whereArgs: [batchId],
+        );
+        
+        // Update measurements in this batch
+        await db.update(
+          DatabaseHelper.tableHealthMeasurements,
+          {'key_version': newKeyVersion},
+          where: 'batchId = ?',
+          whereArgs: [batchId],
+        );
+      }
+      
+      // Log key rotation for audit
+      await _logAuditEvent('data_reencryption_completed', {
+        'old_key_version': oldKeyVersion,
+        'new_key_version': newKeyVersion,
+        'batches_updated': pendingBatches.length,
+      });
+      
+      debugPrint('>>> Re-encryption complete');
+    } catch (e) {
+      debugPrint('!!! Error re-encrypting pending data: $e');
+      
+      // Log error for audit
+      await _logAuditEvent('data_reencryption_failed', {
+        'error': e.toString(),
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+    }
   }
   
   /// Get current sync status

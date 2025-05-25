@@ -67,7 +67,8 @@ class DatabaseHelper {
         lastSyncAttempt INTEGER,
         metadata TEXT,
         checksum TEXT,
-        key_version TEXT
+        key_version TEXT,
+        consent_version TEXT
       )
     ''');
     
@@ -87,7 +88,8 @@ class DatabaseHelper {
         pubsub_message_id TEXT,
         region TEXT DEFAULT 'us-central1',
         checksum TEXT,
-        key_version TEXT
+        key_version TEXT,
+        data_processing_agreement BOOLEAN DEFAULT 1
       )
     ''');
     
