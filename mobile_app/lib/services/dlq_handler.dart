@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,6 +10,7 @@ import 'package:crypto/crypto.dart' as crypto;
 
 import '../data/database_helper.dart';
 import '../models/health_measurement.dart';
+import 'key_manager.dart';
 
 /// Handles processing of messages that failed to be delivered to Pub/Sub
 /// and were sent to the Dead Letter Queue (DLQ)
@@ -20,6 +22,7 @@ class DlqHandler {
   
   // Dependencies
   final _db = DatabaseHelper();
+  final _keyManager = KeyManager();
   
   // Constants
   static const int _maxRetryAttempts = 5;
@@ -28,6 +31,18 @@ class DlqHandler {
   // State tracking
   bool _isProcessing = false;
   Timer? _retryTimer;
+  Timer? _retryQueueTimer;
+  
+  /// Initialize the DLQ handler
+  Future<void> initialize() async {
+    // Start the retry queue processor
+    _retryQueueTimer = Timer.periodic(
+      Duration(minutes: 15),
+      (_) => checkRetryQueue(),
+    );
+    
+    debugPrint('>>> DLQ handler initialized');
+  }
   
   /// Process a failed message from the DLQ
   Future<bool> processFailedMessage(Map<String, dynamic> message) async {
@@ -90,6 +105,11 @@ class DlqHandler {
         case 'server_error':
           // Wait and retry later
           await _scheduleRetry(batchId, message);
+          break;
+          
+        case 'key_version_mismatch':
+          // Handle key version mismatch
+          await _handleKeyVersionMismatch(batchId, message);
           break;
           
         default:
@@ -209,6 +229,74 @@ class DlqHandler {
     await _retrySendBatch(measurements, batchId);
   }
   
+  /// Handle key version mismatch
+  Future<void> _handleKeyVersionMismatch(String batchId, Map<String, dynamic> message) async {
+    debugPrint('>>> Handling key version mismatch for batch: $batchId');
+    
+    try {
+      // Get the batch information
+      final batch = await _getBatchInfo(batchId);
+      if (batch == null) {
+        debugPrint('!!! Batch not found: $batchId');
+        return;
+      }
+      
+      // Get the key version used for this batch
+      final keyVersion = batch['key_version'] as String? ?? 'v1';
+      
+      // Get the current key version
+      final currentKeyVersion = _keyManager.getCurrentKeyVersion();
+      
+      debugPrint('>>> Batch key version: $keyVersion, current key version: $currentKeyVersion');
+      
+      // If the batch was encrypted with an old key, we need to re-encrypt
+      if (keyVersion != currentKeyVersion) {
+        // Get measurements for this batch
+        final measurements = await _db.getMeasurementsByBatch(batchId);
+        if (measurements.isEmpty) {
+          debugPrint('!!! No measurements found for batch: $batchId');
+          return;
+        }
+        
+        // Update batch with current key version
+        final db = await _db.database;
+        await db.update(
+          DatabaseHelper.tableSyncBatches,
+          {'key_version': currentKeyVersion},
+          where: 'id = ?',
+          whereArgs: [batchId],
+        );
+        
+        // Update measurements with current key version
+        for (final measurement in measurements) {
+          await db.update(
+            DatabaseHelper.tableHealthMeasurements,
+            {'key_version': currentKeyVersion},
+            where: 'id = ?',
+            whereArgs: [measurement.id],
+          );
+        }
+        
+        // Log key version update
+        await _logDlqEvent('key_version_updated', {
+          'batch_id': batchId,
+          'old_version': keyVersion,
+          'new_version': currentKeyVersion,
+          'measurement_count': measurements.length,
+        });
+        
+        // Retry sending with updated key version
+        await _retrySendBatch(measurements, batchId);
+      } else {
+        // If the key version is current but still failing, treat as server error
+        await _scheduleRetry(batchId, message);
+      }
+    } catch (e) {
+      debugPrint('!!! Error handling key version mismatch: $e');
+      await _scheduleRetry(batchId, message);
+    }
+  }
+  
   /// Schedule a retry for server errors
   Future<void> _scheduleRetry(String batchId, Map<String, dynamic> message) async {
     debugPrint('>>> Scheduling retry for server error on batch: $batchId');
@@ -234,6 +322,9 @@ class DlqHandler {
       errorMessage: 'Server error, retry scheduled for ${nextRetryTime.toIso8601String()}'
     );
     
+    // Store retry information for the retry queue processor
+    await _storeRetryInfo(batchId, nextRetryTime);
+    
     // Schedule retry
     _retryTimer?.cancel();
     _retryTimer = Timer(Duration(minutes: backoffMinutes), () async {
@@ -250,6 +341,34 @@ class DlqHandler {
     
     // Log retry scheduling for audit trail
     await _logRetryEvent(batchId, retryCount, nextRetryTime, 'server_error');
+  }
+  
+  /// Store retry information for the retry queue processor
+  Future<void> _storeRetryInfo(String batchId, DateTime retryTime) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final retryQueue = prefs.getStringList('retry_queue') ?? [];
+      
+      // Create retry info
+      final retryInfo = {
+        'batch_id': batchId,
+        'retry_time': retryTime.millisecondsSinceEpoch,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      };
+      
+      // Add to queue
+      retryQueue.add(jsonEncode(retryInfo));
+      
+      // Keep queue size reasonable
+      if (retryQueue.length > 100) {
+        retryQueue.removeRange(0, retryQueue.length - 100);
+      }
+      
+      await prefs.setStringList('retry_queue', retryQueue);
+      debugPrint('>>> Stored retry info for batch: $batchId, retry at: ${retryTime.toIso8601String()}');
+    } catch (e) {
+      debugPrint('!!! Error storing retry info: $e');
+    }
   }
   
   /// Handle a permanently failed batch
@@ -390,6 +509,9 @@ class DlqHandler {
       // Add data integrity checksum
       final checksum = _calculatePayloadChecksum(payload);
       
+      // Get current key version
+      final keyVersion = _keyManager.getCurrentKeyVersion();
+      
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -398,6 +520,7 @@ class DlqHandler {
           'X-Retry-Attempt': 'true',
           'X-Data-Checksum': checksum,
           'X-Data-Region': region,
+          'X-Key-Version': keyVersion,
         },
         body: json.encode(payload),
       );
@@ -407,7 +530,14 @@ class DlqHandler {
       
       if (success) {
         // Mark batch as sent
-        await _db.updateBatchStatus(batchId, 'sent');
+        final messageIds = json.decode(response.body)['messageIds'] as List<dynamic>?;
+        final pubsubMessageId = messageIds != null && messageIds.isNotEmpty ? messageIds[0] as String : null;
+        
+        await _db.updateBatchStatus(
+          batchId, 
+          'sent', 
+          pubsubMessageId: pubsubMessageId
+        );
         
         // Mark all measurements in batch as sent
         for (final measurement in measurements) {
@@ -419,6 +549,7 @@ class DlqHandler {
           'batch_id': batchId,
           'measurement_count': measurements.length,
           'retry_count': await _getBatchRetryCount(batchId),
+          'pubsub_message_id': pubsubMessageId,
         });
       } else {
         // Increment retry count
@@ -437,6 +568,7 @@ class DlqHandler {
           'batch_id': batchId,
           'status_code': response.statusCode,
           'retry_count': await _getBatchRetryCount(batchId),
+          'response': response.body.length > 1000 ? response.body.substring(0, 1000) : response.body,
         });
       }
       
@@ -669,8 +801,112 @@ class DlqHandler {
     }
   }
   
+  /// Check for and process any due retries
+  Future<void> checkRetryQueue() async {
+    try {
+      debugPrint('>>> Checking retry queue');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final retryQueue = prefs.getStringList('retry_queue') ?? [];
+      
+      if (retryQueue.isEmpty) {
+        debugPrint('>>> Retry queue is empty');
+        return;
+      }
+      
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final dueRetries = <String>[];
+      final pendingRetries = <String>[];
+      
+      // Find retries that are due
+      for (final retryJson in retryQueue) {
+        try {
+          final retry = jsonDecode(retryJson) as Map<String, dynamic>;
+          final retryTime = retry['retry_time'] as int;
+          
+          if (retryTime <= now) {
+            dueRetries.add(retryJson);
+          } else {
+            pendingRetries.add(retryJson);
+          }
+        } catch (e) {
+          debugPrint('!!! Error parsing retry info: $e');
+          // Skip invalid entries
+        }
+      }
+      
+      // Update the queue to remove due retries
+      await prefs.setStringList('retry_queue', pendingRetries);
+      
+      if (dueRetries.isEmpty) {
+        debugPrint('>>> No due retries found');
+        return;
+      }
+      
+      debugPrint('>>> Found ${dueRetries.length} due retries');
+      
+      // Process each due retry
+      for (final retryJson in dueRetries) {
+        try {
+          final retry = jsonDecode(retryJson) as Map<String, dynamic>;
+          final batchId = retry['batch_id'] as String;
+          
+          // Get batch info
+          final batch = await _getBatchInfo(batchId);
+          if (batch == null) {
+            debugPrint('!!! Batch not found: $batchId');
+            continue;
+          }
+          
+          // Check if batch is still in a retryable state
+          final status = batch['status'] as String;
+          if (status != 'retry_scheduled' && status != 'retry_failed') {
+            debugPrint('>>> Batch $batchId is no longer in retryable state: $status');
+            continue;
+          }
+          
+          // Get measurements for this batch
+          final measurements = await _db.getMeasurementsByBatch(batchId);
+          if (measurements.isEmpty) {
+            debugPrint('!!! No measurements found for batch: $batchId');
+            continue;
+          }
+          
+          // Update batch status
+          await _db.updateBatchStatus(batchId, 'retrying');
+          
+          // Attempt to resend
+          final success = await _retrySendBatch(measurements, batchId);
+          
+          if (success) {
+            debugPrint('>>> Successfully retried batch: $batchId');
+          } else {
+            debugPrint('!!! Failed to retry batch: $batchId');
+            
+            // Check if we've exceeded retry attempts
+            final retryCount = batch['retryCount'] as int? ?? 0;
+            if (retryCount >= _maxRetryAttempts) {
+              await _handlePermanentFailure(batchId, {
+                'messageId': 'retry-${const Uuid().v4()}',
+                'attributes': {
+                  'batch_id': batchId,
+                  'error_type': 'retry_limit_exceeded',
+                },
+              });
+            }
+          }
+        } catch (e) {
+          debugPrint('!!! Error processing due retry: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('!!! Error checking retry queue: $e');
+    }
+  }
+  
   /// Clean up resources
   void dispose() {
     _retryTimer?.cancel();
+    _retryQueueTimer?.cancel();
   }
 }
