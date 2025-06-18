@@ -1,8 +1,47 @@
-## 📱 Mobile Health MVP
+# Remote Patient Monitoring — 🔗 EHR Data Enrichment Module
+_A production-ready Flutter reference app that captures patient-generated health data via Bluetooth LE devices and posts FHIR/HL7-compliant messages to any modern EHR platform._
+
+![platform](https://img.shields.io/badge/platform-ios%20%7C%20android%20%7C%20macos-green)
+![build](https://github.com/<org>/<repo>/actions/workflows/ci.yml/badge.svg)
+![license](https://img.shields.io/github/license/<org>/<repo>)
+
+## 🤝 At a Glance — Why EHR Vendors Care
+* Drop-in module that **enriches existing EHRs with real-time, patient-generated data** (weight, BP, glucose, …) without changing the EHR’s core schemas.  
+* Outputs **standards-compliant HL7 V2 / FHIR bundles**; your integration layer consumes them exactly as any other lab feed.  
+* Designed for **HIPAA-grade security** — on-device AES-256 encryption, rotated keys, and background data purge.  
+* Ships with a reference Android foreground service and iOS background modes for uninterrupted BLE connectivity.
+
+## 🚀 Key Capabilities
+- Bluetooth LE device discovery, auto-reconnect & background data capture  
+- Local SQLite persistence with resumable batching  
+- Secure HL7/FHIR serialization with pluggable cryptographic key rotation  
+- Connectivity-aware sync & dead-letter-queue retry handling  
+- Firebase Auth + e-mail approval gate for quick PoC demos  
+
+See the full design doc in [`docs/MOBILE_HEALTH_MVP_DESIGN.md`](docs/MOBILE_HEALTH_MVP_DESIGN.md).
+
+## 🏗 Architecture Snapshot
+```text
+ BLE Device ─┐               ┌──────────┐     HL7/FHIR     ┌────────┐
+             │               │          │  HTTPS/WebSocket │        │
+┌────────────▼──────┐   ┌────▼────┐     │                  │  EHR / │
+│ DeviceDiscoverySvc │──► DB (Batch) ├──► SyncService ─────►  HIS   │
+└────────────────────┘   └──────────┘                        └────────┘
+```
+
+### Quick Start (for decision-makers)
+```bash
+git clone <repo_url> && cd mobile_app
+flutter run -d macos   # 60-second demo on desktop
+```
+
+---
+
+## 👩‍💻 Developer Setup  <!-- rename the existing env section -->
 See [`docs/MOBILE_HEALTH_MVP_DESIGN.md`](docs/MOBILE_HEALTH_MVP_DESIGN.md) for
 the complete architectural blueprint, component diagram, and rollout plan.
 
-## Local Environment – Post-Install Fixes
+## 👩‍💻 Developer Setup
 
 ### 1. Add Flutter & Dart to your PATH
 ```bash
