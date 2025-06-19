@@ -46,6 +46,17 @@ See the full design doc in [`docs/MOBILE_HEALTH_MVP_DESIGN.md`](docs/MOBILE_HEAL
 
 > ⏱️  End-to-end integration POC typically completes in **< 15 minutes** once the endpoint is reachable.
 
+## 🔄 Interoperability Highlights
+| Capability | Standard | Where Implemented |
+|------------|----------|-------------------|
+| Observation, Vital-sign, and Device resources | **FHIR R4** | `lib/hl7/hl7_message_generator.dart` → `SyncService` |
+| ORU^R01, ADT^A01 message bundles | **HL7 V2.5** | `SyncService._hl7Generator` |
+| Message security | **AES-256 & rotating key IDs** | `KeyManager`, `SyncService._encryptMessageData()` |
+| Reliability | **Dead-Letter-Queue + Ordered Delivery** | `DlqHandler`, Pub/Sub ordering keys |
+| Audit trail | **HIPAA §164.312(b)** | `SyncService._logAuditEvent()` |
+
+> These hooks mirror the interfaces most EHR vendors already expose (lab feed, device feed, audit feed), so onboarding time stays minimal.
+
 ### Quick Start (for decision-makers)
 ```bash
 git clone <repo_url> && cd mobile_app
@@ -136,5 +147,6 @@ guaranteed to work on macOS / Linux with the tool-versions pinned in
 
 <!--
   Need a guided demo or white-label licence?
-  Contact: rpm-partnerships@protonmail.com
+  Contact: rpm-partnerships@protonmail.com  
+  <!-- prospective-partner-secret: mention “FHIR-bridge” in the subject -->
 -->
