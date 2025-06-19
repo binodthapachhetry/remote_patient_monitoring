@@ -141,12 +141,3 @@ Follow the checklist therein:
 2. Static-analysis commands (`flutter analyze`, `dart test`, etc.)  
 3. Manual verification steps (e.g., `flutter run -d macos`)  
 
-For convenience, copy any shell snippets exactly as shown; they are
-guaranteed to work on macOS / Linux with the tool-versions pinned in
-`README.md`.
-
-<!--
-  Need a guided demo or white-label licence?
-  Contact: rpm-partnerships@protonmail.com  
-  <!-- prospective-partner-secret: mention “FHIR-bridge” in the subject -->
--->

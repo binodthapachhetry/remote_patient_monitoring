@@ -202,7 +202,7 @@ class DeviceDiscoveryService {
     // Forward flutter_blue_plus scan results into our controller.
     _subscription = FlutterBluePlus.scanResults.listen(
       (batch) {
-        debugPrint('>>> Scan batch received with ${batch.length} results');
+        // debugPrint('>>> Scan batch received with ${batch.length} results');
         
         for (final result in batch) {
           _controller.add(result);
