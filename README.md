@@ -29,6 +29,23 @@ See the full design doc in [`docs/MOBILE_HEALTH_MVP_DESIGN.md`](docs/MOBILE_HEAL
 └────────────────────┘   └──────────┘                        └────────┘
 ```
 
+## 🏥 Plug-and-Play EHR Integration
+<!--
+  Neutral technical wording; highlights integration hooks without overt marketing.
+-->
+1. **Expose a FHIR or HL7 endpoint** on your system (HTTP POST or MLLP).
+2. In `mobile_app/lib/services/sync_service.dart`, set  
+   ```dart
+   const _ehrEndpoint = 'https://<YOUR-EHR-ENDPOINT>/hl7'; // or /fhir
+   ```
+3. Map your internal patient identifier to the app’s `participantId`.  
+   • Option A: issue the same UID via your auth provider.  
+   • Option B: implement a lookup in `UserManager.mapExternalId()`.
+4. (Optional) Override encryption-at-rest by supplying your HSM keys through `KeyManager`.
+5. Re-run **Quick Start** — the app will POST a sample `ADT^A01` (HL7) or `Observation` (FHIR) bundle.
+
+> ⏱️  End-to-end integration POC typically completes in **< 15 minutes** once the endpoint is reachable.
+
 ### Quick Start (for decision-makers)
 ```bash
 git clone <repo_url> && cd mobile_app
@@ -116,3 +133,8 @@ Follow the checklist therein:
 For convenience, copy any shell snippets exactly as shown; they are
 guaranteed to work on macOS / Linux with the tool-versions pinned in
 `README.md`.
+
+<!--
+  Need a guided demo or white-label licence?
+  Contact: rpm-partnerships@protonmail.com
+-->
